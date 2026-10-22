@@ -1,8 +1,9 @@
-# Member 2 Integration Proposals
+# Member 2 Integration Notes
 
-This document records the decisions supplied for this implementation and the
-interfaces that still need confirmation from Members 1 and 3. It does not amend
-the agreed [Integration Contract](./INTEGRATION_CONTRACT.md).
+This document records Member 2's implementation choices and integration
+dependencies. The current
+[Integration Contract](./INTEGRATION_CONTRACT.md) is authoritative; this
+document does not amend it.
 
 ## Implementation decisions supplied by Pratik
 
@@ -13,77 +14,97 @@ the agreed [Integration Contract](./INTEGRATION_CONTRACT.md).
 - No user, including an administrator, may edit another user's comment unless
   the team explicitly approves that additional permission.
 
-These decisions are applied in the Member 2 implementation. The team should
-record them in the shared contract before merging changes that affect other
-members.
+These decisions are applied in the Member 2 implementation and align with the
+confirmed project-archive and comment-moderation decisions in the shared
+contract.
 
-## Proposals pending Member 1/3 confirmation
+## Shared integration points
 
 ### Authentication identity
 
-Member 3's `requireAuth` should validate the JWT and attach:
+Member 3's `requireAuth` must validate the JWT and attach the authenticated
+identity specified by the contract:
 
 ```js
 req.user = {
-  id: "12",
+  id: 12,
   role: "MEMBER"
 };
 ```
 
-`id` is a decimal string to avoid JavaScript precision loss for
-`BIGINT UNSIGNED`. Roles are `ADMIN` and `MEMBER`. `requireRole("ADMIN")`
-should reject missing/invalid identity with `401` and insufficient role with
-`403`. Member 2 does not issue, parse, or persist tokens. Until Member 3's real
-middleware is integrated, production protected endpoints fail explicitly with
-`503 AUTHENTICATION_UNAVAILABLE`; test-only identity injection is not enabled
-in the production entry point.
+Roles are `ADMIN` and `MEMBER`. Member 2 normalizes safe numeric IDs and
+decimal-string IDs; decimal strings should be used for values outside
+JavaScript's safe-integer range. Member 2 does not issue, parse, or persist
+tokens. Until Member 3's real middleware is integrated, protected endpoints
+fail explicitly with `503 AUTHENTICATION_UNAVAILABLE`; test-only identity
+injection is not enabled in the production entry point.
 
 ### Project access middleware
 
-Proposed reusable signature:
+The shared contract names the reusable `requireProjectMember(projectId)`
+interface. Member 2's service currently enforces the same access checks on its
+own routes and provides a resolver-based middleware helper for nested routes:
 
 ```js
-requireProjectMember({ getProjectId: (req) => req.params.id })
+const { requireProjectMember } = createProjectAccessMiddleware(projectService);
+router.get("/:id", requireAuth, requireProjectMember((req) => req.params.id));
 ```
 
-The middleware should run after `requireAuth`, load the project, allow owners
-and members to access it, and permit the administrator exception for reads.
-It should attach the authorized project as `req.project`. Member 1's task
-routes must resolve a task's `project_id` before checking membership; they must
-not trust a client-supplied project ID in place of the task relationship.
-Nested writes must also reject archived projects. This resolver signature and
-administrator write permissions remain pending team confirmation.
+The helper must run after authentication, resolve the project from the
+resource relationship, and reject writes to archived projects. Member 1's task
+routes must resolve a task's `project_id` before checking membership; they
+must not trust a client-supplied project ID in place of the task relationship.
+The combined task routes still need this authorization wiring before they can
+be mounted in the production server.
 
 For project settings and membership writes, this implementation allows the
 project owner. Administrators may archive but may not edit settings or
-membership through the Member 2 API. This least-privilege split is a proposal
-pending team confirmation.
+membership through the Member 2 API. This is the current least-privilege
+behavior for team review.
 
 ### Task and Kanban interface
 
-The agreed task fields/statuses are used without creating a second task
-service:
+The merged task API and shared contract define the task resource. Member 2
+does not create a second task service:
 
-- `GET /api/v1/tasks?projectId=...&page=...&limit=...` supplies active project
-  tasks to the board.
-- `PATCH /api/v1/tasks/:id` with `{ "status": "TODO" | "IN_PROGRESS" | "DONE" }`
-  persists a status change through Member 1's task API.
+- The board reads active tasks directly from the shared `tasks` table.
+- The client sends status-only changes to `PATCH /api/v1/tasks/:id`.
 - Board reads may use the shared `tasks` table in a read-only repository query
-  for `/api/v1/projects/:id/board`; status writes remain Member 1's
+  for `/api/v1/projects/:id/board`; task writes remain Member 1's
   responsibility.
 
-The Kanban response is proposed as `{ "TODO": [], "IN_PROGRESS": [],
-"DONE": [] }`. Cards use only the contract task fields. Member 1 must confirm
-that status-only patches and the list response support this use.
+The Kanban response follows the collection envelope, with grouped task arrays
+inside `data`, for example:
+
+```json
+{
+  "data": {
+    "TODO": [],
+    "IN_PROGRESS": [],
+    "DONE": []
+  },
+  "pagination": {
+    "page": 1,
+    "limit": 20,
+    "total": 0
+  }
+}
+```
+
+Cards use only the contract task fields. The merged task router is not mounted
+in the rebuilt production entry point yet. It lacks the shared authentication,
+project-membership, and owner-or-assignee authorization wiring. The client
+request is implemented, but status persistence is not considered integrated
+until those checks and a live task schema are available.
 
 ### Database and JSON representation
 
-The Member 2 migrations propose:
+The intended migration ordering is:
 
 1. `001_users` — Member 3.
 2. `002_projects` and `003_project_members` — Member 2.
 3. `004_tasks` — Member 1.
-4. `005_comments` — Member 2.
+4. `005_comments.sql` — Member 2.
 
 Projects have `id`, `owner_id`, `name`, `description`, `archived`,
 `created_at`, and `updated_at`. Membership uses a unique `(project_id, user_id)`
@@ -92,15 +113,17 @@ Comments have `id`, `task_id`, `author_id`, `body`, and timestamps. Member 2
 migrations reference, but do not create or alter, Member 1's `tasks` or Member
 3's `users` tables.
 
-API IDs are proposed as decimal strings. Dates/timestamps are ISO 8601 UTC.
+API IDs are serialized as decimal strings to avoid JavaScript precision loss.
+Dates/timestamps are ISO 8601 UTC.
 Comment bodies are limited to 5,000 characters; project names to 150
-characters; descriptions to 5,000 characters. The team should confirm these
-limits and the exact project/comment JSON field names.
+characters; descriptions to 5,000 characters. Some project/comment JSON
+fields are not specified in the shared contract and remain documented in the
+API reference.
 
 ### Pagination
 
-Proposed defaults are `page=1`, `limit=20`, and maximum `limit=100`. Responses
-follow the shared contract:
+The shared contract confirms `page=1`, `limit=20`, and maximum `limit=100`.
+Responses follow the shared contract:
 
 ```json
 {
@@ -113,11 +136,9 @@ follow the shared contract:
 }
 ```
 
-The defaults and maximum remain pending team confirmation.
-
 ### Dashboard calculation
 
-The proposed response is:
+The Member 2 response is:
 
 ```json
 {
@@ -135,8 +156,11 @@ The proposed response is:
 active tasks. `overdue` counts active tasks whose due date is before the
 current UTC date and whose status is not `DONE`.
 
-## Other open contract decisions
+## Remaining integration work
 
-The shared contract also leaves category/tag scope, JWT expiry/revocation,
-reminder delivery/retry, and the final project-access middleware signature
-open. Member 2 does not decide or implement those Member 1/3 concerns.
+The shared contract now records the category/tag scope, JWT session and
+revocation policy, reminder behavior, pagination limits, and project-access
+interface. Remaining work is wiring Member 3's authentication into the
+combined server, adding server-side project/task authorization to the task
+routes, and verifying the migration set against Member 1's task schema and a
+live MySQL instance.
