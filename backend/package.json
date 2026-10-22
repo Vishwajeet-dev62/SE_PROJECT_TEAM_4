@@ -2,16 +2,14 @@
   "name": "backend",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
-  "directories": {
-    "test": "tests"
-  },
+  "main": "server.js",
+  "private": true,
   "scripts": {
     "test": "node --test",
-    "start": "node src/server.js",
-    "dev": "nodemon src/server.js"
+    "start": "node --env-file-if-exists=.env server.js",
+    "dev": "node --env-file-if-exists=.env --watch server.js",
+    "migrate": "node --env-file-if-exists=.env scripts/migrate.js"
   },
-  "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
