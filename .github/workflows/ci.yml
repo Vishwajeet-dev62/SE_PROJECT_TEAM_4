@@ -1,4 +1,3 @@
-
 name: Task Manager CI
 
 on:
@@ -8,6 +7,7 @@ on:
       - "dev/**"
       - "sprint-1/**"
       - "sprint-2/**"
+      - "feature/**"
   pull_request:
     branches:
       - main
@@ -16,22 +16,44 @@ permissions:
   contents: read
 
 jobs:
-  baseline:
-    name: Validate Clean Baseline
+  validate:
+    name: Validate Repository
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
       - name: Verify required files
         run: |
           test -f docs/INTEGRATION_CONTRACT.md
-          test -f Task_Manager_SAD.pdf
           test -f Task_Manager_SRS_updated.pdf
+          test -f Task_Manager_SAD.pdf
           test -f Task_Manager_Test_Plan.pdf
 
-      - name: Verify old implementation is removed
+      - name: Verify legacy frontend is absent from baseline
         run: |
-          test ! -d frontend
-          test ! -d backend
+          if git ls-files --error-unmatch frontend/package.json >/dev/null 2>&1; then
+            echo "Legacy frontend/package.json is still tracked."
+            exit 1
+          fi
+
+      - name: Validate backend JavaScript syntax
+        run: |
+          find backend/src backend/tests -type f -name '*.js' -print0 |
+            xargs -0 -r -n 1 node --check
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Run backend tests
+        working-directory: backend
+        run: npm test
