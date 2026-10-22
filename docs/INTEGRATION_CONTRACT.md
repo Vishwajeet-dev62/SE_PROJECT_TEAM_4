@@ -318,16 +318,18 @@ Use one agreed scheduling setup for task reminders and the 30-day soft-delete pu
 8. The RTM must be updated by each feature owner with implementation status and test evidence.
 9. Unfinished requirements must remain marked as incomplete and be planned for a future sprint.
 
-## 13. Decisions to confirm before implementation
+## 13. Confirmed implementation decisions
 
-The team must record its decisions on:
+The team has agreed on the following defaults for implementation:
 
-- Who can archive a project: project owner, administrator or both.
-- Whether categories and tags are user-specific or project-specific.
-- The JWT expiry and revocation mechanism used for logout.
-- The reminder delivery and retry strategy.
-- The precise permissions for editing and deleting comments.
-- Pagination defaults and maximum page sizes.
-- The agreed project-access middleware signature.
+1. **Project archiving:** Only the project owner or an administrator may archive a project.
+2. **Categories and tags:** Categories and tags are project-specific.
+3. **Authentication sessions:** Use short-lived JWTs with server-side session/revocation tracking. Logout must invalidate the session server-side.
+4. **Reminders:** Use scheduled reminders with duplicate prevention and retry handling.
+5. **Comment permissions:** Comment authors may edit or delete their own comments. Project administrators may moderate comments.
+6. **Pagination:** The default page size is 20 records, with a maximum of 100 records per page.
+7. **Project-access middleware:** Use `requireProjectMember(projectId)`. The middleware must verify that the authenticated user belongs to the specified project.
 
-**This document defines the initial shared contract.** Once the team confirms the outstanding decisions, implement the database migrations and feature APIs against this version. Any later contract changes must be coordinated and documented.
+All feature implementations must follow these decisions. If a decision needs to change, the team must agree on the change and update this document through a reviewed pull request before relying on the new behavior.
+
+**This document defines the shared implementation contract.** Database migrations, APIs, frontend integration and tests must follow it. Any subsequent changes to shared interfaces must be coordinated and documented.
