@@ -1,7 +1,0 @@
-node_modules/
-
-# Local environment files may contain secrets.
-.env
-.env.*
-!.env.example
-*.local
