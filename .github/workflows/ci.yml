@@ -16,31 +16,22 @@ permissions:
   contents: read
 
 jobs:
-  frontend:
-    name: Frontend Checks
+  baseline:
+    name: Validate Clean Baseline
     runs-on: ubuntu-latest
-
-    defaults:
-      run:
-        working-directory: frontend
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
+      - name: Verify required files
+        run: |
+          test -f docs/INTEGRATION_CONTRACT.md
+          test -f Task_Manager_SAD.pdf
+          test -f Task_Manager_SRS_updated.pdf
+          test -f Task_Manager_Test_Plan.pdf
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run ESLint
-        run: npm run lint
-
-      - name: Run tests
-        run: npm test -- --run
-
-      - name: Build frontend
-        run: npm run build
+      - name: Verify old implementation is removed
+        run: |
+          test ! -d frontend
+          test ! -d backend
