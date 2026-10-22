@@ -39,12 +39,11 @@ jobs:
           test -f Task_Manager_SAD.pdf
           test -f Task_Manager_Test_Plan.pdf
 
-      - name: Verify legacy frontend is absent from baseline
+      - name: Verify rebuilt frontend files
         run: |
-          if git ls-files --error-unmatch frontend/package.json >/dev/null 2>&1; then
-            echo "Legacy frontend/package.json is still tracked."
-            exit 1
-          fi
+          test -f frontend/package.json
+          test -f frontend/package-lock.json
+          test -f frontend/src/main.jsx
 
       - name: Validate backend JavaScript syntax
         run: |
