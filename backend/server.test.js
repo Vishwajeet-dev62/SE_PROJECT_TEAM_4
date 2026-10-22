@@ -39,3 +39,13 @@ test("GET /health returns OK status", async () => {
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), { status: "OK" });
 });
+
+test("GET /api/v1/tasks returns the controller response", async () => {
+  const response = await fetch(`${baseUrl}/api/v1/tasks`);
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    message: "Task controller is working!",
+    tasks: [],
+  });
+});
