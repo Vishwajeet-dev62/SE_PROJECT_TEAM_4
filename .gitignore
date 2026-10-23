@@ -1,8 +1,23 @@
+# Dependencies
 node_modules/
 **/node_modules/
+
+# Environment secrets
 .env
 .env.*
 !.env.example
+
+# Logs and test output
 *.log
 coverage/
+
+# Local backup
 backend_backup_before_replacement/
+
+# Operating system
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/

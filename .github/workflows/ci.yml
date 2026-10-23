@@ -7,6 +7,7 @@ on:
       - "dev/**"
       - "sprint-1/**"
       - "sprint-2/**"
+      - "feat/**"
       - "feature/**"
   pull_request:
     branches:
@@ -27,23 +28,22 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
           cache-dependency-path: backend/package-lock.json
 
-      - name: Verify required files
+      - name: Verify required project documents
         run: |
           test -f docs/INTEGRATION_CONTRACT.md
           test -f Task_Manager_SRS_updated.pdf
           test -f Task_Manager_SAD.pdf
           test -f Task_Manager_Test_Plan.pdf
 
-      - name: Verify legacy frontend is absent from baseline
+      - name: Verify rebuilt frontend files
         run: |
-          if git ls-files --error-unmatch frontend/package.json >/dev/null 2>&1; then
-            echo "Legacy frontend/package.json is still tracked."
-            exit 1
-          fi
+          test -f frontend/package.json
+          test -f frontend/package-lock.json
+          test -f frontend/src/main.jsx
 
       - name: Validate backend JavaScript syntax
         run: |
@@ -57,3 +57,30 @@ jobs:
       - name: Run backend tests
         working-directory: backend
         run: npm test
+
+  frontend:
+    name: Test frontend
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci --prefix frontend
+
+      - name: Run frontend tests
+        run: npm test --prefix frontend
+
+      - name: Lint frontend
+        run: npm run lint --prefix frontend
+
+      - name: Build frontend
+        run: npm run build --prefix frontend
