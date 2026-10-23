@@ -1,6 +1,6 @@
+'use strict';
 
 const express = require('express');
-
 const {
   listTasks,
   listDeletedTasks,
@@ -14,15 +14,19 @@ const {
 
 const router = express.Router();
 
-// Specific paths must be registered before /:id.
+// Register named routes before /:id to avoid treating them as task IDs.
 router.get('/trash', listDeletedTasks);
 router.get('/export.csv', exportTasksCsv);
 
-router.get('/', listTasks);
-router.post('/', createTask);
-router.get('/:id', getTaskById);
-router.patch('/:id', updateTask);
-router.delete('/:id', deleteTask);
+router.route('/')
+  .get(listTasks)
+  .post(createTask);
+
+router.route('/:id')
+  .get(getTaskById)
+  .patch(updateTask)
+  .delete(deleteTask);
+
 router.post('/:id/restore', restoreTask);
 
 module.exports = router;

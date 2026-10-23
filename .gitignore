@@ -1,11 +1,23 @@
+# Dependencies
+node_modules/
 **/node_modules/
-**/dist/
-coverage/
+
+# Environment secrets
 .env
 .env.*
 !.env.example
-*.local
-npm-debug.log*
-yarn-debug.log*
-pnpm-debug.log*
+
+# Logs and test output
+*.log
+coverage/
+
+# Local backup
+backend_backup_before_replacement/
+
+# Operating system
 .DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
