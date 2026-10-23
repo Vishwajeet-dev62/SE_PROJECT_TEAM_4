@@ -55,8 +55,10 @@ Protected backend routes require Member 3's real JWT middleware. Until that
 middleware is integrated, protected routes intentionally return
 `503 AUTHENTICATION_UNAVAILABLE`; the application does not enable a mock
 identity or mock project/task data. Kanban status changes call Member 1's
-`PATCH /api/v1/tasks/:id` endpoint and must be verified against that member's
-task implementation before the feature is considered integrated.
+`PATCH /api/v1/tasks/:id` endpoint, but task reads and writes fail closed until
+authentication, project membership, and owner-or-assignee authorization are
+integrated. The task-table migration `004_tasks.sql` is also missing, so a
+fresh database cannot complete the migration set.
 
 Current cross-member assumptions and decisions are tracked in
 [integration proposals](./docs/INTEGRATION_PROPOSALS.md). See the [Member 2

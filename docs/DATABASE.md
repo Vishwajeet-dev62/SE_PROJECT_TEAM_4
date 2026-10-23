@@ -12,14 +12,20 @@ the migrations intentionally reference Member 3's `users` and Member 1's
 | `001_users.sql` | Member 3 | None |
 | `002_projects.sql` | Member 2 | `users` |
 | `003_project_members.sql` | Member 2 | `users`, `projects` |
-| `004_tasks.sql` | Member 1 | `users`, `projects` |
+| `004_tasks.sql` | Member 1 | **Missing from the current repository** |
 | `005_comments.sql` | Member 2 | `users`, `tasks` |
+| `006_audit_logs.sql` | Member 3 | `users` |
+| `007_password_reset_tokens.sql` | Member 3 | `users` |
 
 The shared migration runner applies numbered SQL files in lexical order,
-records successful files in `schema_migrations`, checks Member 2 migration
+records successful files in `schema_migrations`, checks migration
 prerequisites, and serializes concurrent runs with a MySQL advisory lock.
 Migrations are not wrapped in a transaction because MySQL DDL may implicitly
-commit. Create the prerequisite member-owned tables before running the runner.
+commit. The current tree does not include the task-table migration required
+by `005_comments.sql` and Member 2's board/dashboard queries. Until Member 1
+adds that migration, a fresh database cannot complete the migration set.
+Because MySQL DDL may implicitly commit, the runner can leave earlier
+migrations applied before it reports the missing `tasks` table.
 
 ## Owned schema
 
@@ -39,6 +45,6 @@ dynamic SQL is limited to a fixed allowlist of project update columns.
 
 Repository tests exercise migration ordering, dependency checks, and the
 runner using a fake MySQL pool. They do not apply DDL to a live MySQL instance.
-The schema cannot be applied in isolation until Member 1's `tasks` and Member
-3's `users` migrations are available. Verify the combined migration set against
-the team's MySQL version before merging the integration branch.
+The users, project, membership, audit-log, and reset-token migrations are
+present. The schema cannot be completed until Member 1's `tasks` migration is
+available and a disposable MySQL database is used to verify the combined set.
