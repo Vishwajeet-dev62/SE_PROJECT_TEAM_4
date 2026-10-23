@@ -80,10 +80,11 @@ status-grouped task arrays in `data`:
 The board reads the shared `tasks` table; it does not create or update task
 records. Status changes use Member 1's
 `PATCH /api/v1/tasks/:id` with `{ "status": "TODO" | "IN_PROGRESS" | "DONE" }`.
-The merged task router is not mounted by the rebuilt server until shared
+The merged task router is not mounted by the configured server until shared
 authentication, project membership, and task ownership checks are connected.
-Until then, task endpoint requests return an explicit `503 API_NOT_CONFIGURED`.
-That cross-member write must be verified against Member 1's implementation.
+The legacy standalone task server also fails closed with
+`503 API_NOT_CONFIGURED`. That cross-member write must be verified against
+Member 1's implementation.
 
 ## Comments
 

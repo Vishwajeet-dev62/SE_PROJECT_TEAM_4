@@ -92,19 +92,22 @@ inside `data`, for example:
 ```
 
 Cards use only the contract task fields. The merged task router is not mounted
-in the rebuilt production entry point yet. It lacks the shared authentication,
-project-membership, and owner-or-assignee authorization wiring. The client
-request is implemented, but status persistence is not considered integrated
-until those checks and a live task schema are available.
+in the configured production entry point. It lacks the shared authentication,
+project-membership, and owner-or-assignee authorization wiring. The legacy
+standalone task server now returns `503 API_NOT_CONFIGURED` rather than exposing
+unauthenticated task writes. The client request is implemented, but status
+persistence is not considered integrated until those checks and a live task
+schema are available.
 
 ### Database and JSON representation
 
-The intended migration ordering is:
+The expected migration ordering is:
 
 1. `001_users` — Member 3.
 2. `002_projects` and `003_project_members` — Member 2.
-3. `004_tasks` — Member 1.
+3. `004_tasks` — Member 1 (**not present in the current repository**).
 4. `005_comments.sql` — Member 2.
+5. `006_audit_logs.sql` and `007_password_reset_tokens.sql` — Member 3.
 
 Projects have `id`, `owner_id`, `name`, `description`, `archived`,
 `created_at`, and `updated_at`. Membership uses a unique `(project_id, user_id)`

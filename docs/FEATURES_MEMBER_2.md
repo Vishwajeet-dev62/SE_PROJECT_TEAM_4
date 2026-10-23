@@ -39,8 +39,13 @@ write logic.
 - Kanban status persistence depends on Member 1's task `PATCH` route and
   `tasks` schema. The UI/API client call is implemented, but end-to-end task
   status persistence is not yet verified.
-- Migration DDL depends on Member 1's and Member 3's owned tables. Local tests
-  validate ordering and prerequisites, not a live MySQL apply.
+- Migration DDL depends on Member 1's `tasks` table. Although the migration
+  runner expects it before `005_comments.sql`, no `004_tasks.sql` exists in the
+  current tree. Local tests validate ordering and prerequisites, not a live
+  MySQL apply.
+- The legacy standalone Member 1 task server now fails closed with
+  `503 API_NOT_CONFIGURED`; it must not be mounted for production use until
+  authentication and project/task authorization are integrated.
 - Pagination defaults, some data fields, and admin write policy remain
   proposals pending team confirmation as recorded in
   [integration proposals](./INTEGRATION_PROPOSALS.md).
