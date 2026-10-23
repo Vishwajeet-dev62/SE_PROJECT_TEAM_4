@@ -5,7 +5,6 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const { testConnection, pool } = require('./config/db');
-const taskRoutes = require('./routes/taskRoutes');
 
 const app = express();
 
@@ -15,7 +14,12 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '1mb' }));
 
-app.use('/api/v1/tasks', taskRoutes);
+app.use('/api/v1/tasks', (_req, res) => res.status(503).json({
+  error: {
+    code: 'API_NOT_CONFIGURED',
+    message: 'Task routes require authentication and project authorization integration',
+  },
+}));
 
 app.get('/api/v1/health', async (req, res) => {
   try {
