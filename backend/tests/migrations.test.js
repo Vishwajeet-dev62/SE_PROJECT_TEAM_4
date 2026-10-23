@@ -13,6 +13,8 @@ test("Member 2 migrations have stable order and explicit external dependencies",
     "002_projects.sql",
     "003_project_members.sql",
     "005_comments.sql",
+    "006_audit_logs.sql",
+    "007_password_reset_tokens.sql",
   ]);
   assert.equal(MIGRATION_DEPENDENCIES["001_users.sql"], undefined);
   assert.deepEqual(MIGRATION_DEPENDENCIES["002_projects.sql"], ["users"]);
@@ -24,6 +26,8 @@ test("Member 2 migrations have stable order and explicit external dependencies",
     "users",
     "tasks",
   ]);
+  assert.deepEqual(MIGRATION_DEPENDENCIES["006_audit_logs.sql"], ["users"]);
+  assert.deepEqual(MIGRATION_DEPENDENCIES["007_password_reset_tokens.sql"], ["users"]);
 });
 
 test("project, membership, and comment schemas use InnoDB and contract keys", () => {
@@ -87,9 +91,11 @@ test("migration runner applies sorted files once under a database lock", async (
     "002_projects.sql",
     "003_project_members.sql",
     "005_comments.sql",
+    "006_audit_logs.sql",
+    "007_password_reset_tokens.sql",
   ]);
-  assert.equal(state.applied.size, 4);
-  assert.equal(state.executed.length, 4);
+  assert.equal(state.applied.size, 6);
+  assert.equal(state.executed.length, 6);
   assert.equal(state.lockReleased, true);
 });
 
@@ -101,6 +107,17 @@ test("users schema uses InnoDB, unique email and lockout columns", () => {
   assert.match(users, /failed_attempts/);
   assert.match(users, /locked_until/);
   assert.match(users, /ENGINE=InnoDB/);
+});
+test("audit log and reset token schemas use InnoDB and required keys", () => {
+  const audit = readMigration("006_audit_logs.sql");
+  const reset = readMigration("007_password_reset_tokens.sql");
+  assert.match(audit, /FOREIGN KEY \(user_id\) REFERENCES users \(id\)/);
+  assert.match(audit, /event_type/);
+  assert.match(audit, /ENGINE=InnoDB/);
+  assert.match(reset, /UNIQUE KEY uq_password_reset_token_hash \(token_hash\)/);
+  assert.match(reset, /used_at/);
+  assert.match(reset, /expires_at/);
+  assert.match(reset, /ENGINE=InnoDB/);
 });
 
 test("migration runner reports missing member-owned tables without applying schema", async () => {
