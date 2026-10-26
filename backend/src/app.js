@@ -6,6 +6,7 @@ const { requestContext } = require("./middleware/requestContext");
 const { createCommentRouter } = require("./controllers/commentController");
 const { createProjectRouter } = require("./routes/projectRoutes");
 const { createAuthRouter } = require("./routes/authRoutes");
+const { createTaskServiceRouter } = require("./routes/taskServiceRoutes");
 
 const DEFAULT_CORS_ORIGINS = ["http://localhost:5173"];
 
@@ -14,6 +15,7 @@ function createApp({
   requireAuth = authenticationUnavailable,
   projectService,
   commentService,
+  taskService,
   authService,
 } = {}) {
   const app = express();
@@ -38,6 +40,12 @@ function createApp({
     app.use(
       "/api/v1",
       createCommentRouter({ express, commentService, requireAuth }),
+    );
+  }
+  if (taskService) {
+    app.use(
+      "/api/v1",
+      createTaskServiceRouter({ taskService, requireAuth }),
     );
   }
   app.use((req, res) => {

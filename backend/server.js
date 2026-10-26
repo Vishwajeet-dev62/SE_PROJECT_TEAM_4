@@ -7,7 +7,7 @@ function start() {
   require("dotenv").config();
   const config = getConfig();
   const pool = createPool(config.db);
-  const services = const services = createServices(pool, {
+  const services = createServices(pool, {
     jwtSecret: config.jwtSecret,
     jwtExpiresIn: config.jwtExpiresIn,
   });
