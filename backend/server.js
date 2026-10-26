@@ -7,7 +7,10 @@ function start() {
   require("dotenv").config();
   const config = getConfig();
   const pool = createPool(config.db);
-  const services = createServices(pool);
+  const services = const services = createServices(pool, {
+    jwtSecret: config.jwtSecret,
+    jwtExpiresIn: config.jwtExpiresIn,
+  });
   const app = createApp({ ...services, corsOrigins: config.corsOrigins });
   const server = app.listen(config.port, () => {
     console.info(`Task Manager API listening on port ${config.port}`);

@@ -41,6 +41,8 @@ function getConfig(env = process.env) {
         100,
       ),
     },
+    jwtSecret: env.JWT_SECRET,
+    jwtExpiresIn: env.JWT_EXPIRES_IN || "30m",
     corsOrigins: origins,
   };
 }
