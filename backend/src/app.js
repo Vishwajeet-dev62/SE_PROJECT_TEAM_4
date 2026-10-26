@@ -5,6 +5,7 @@ const { errorHandler } = require("./middleware/errorHandler");
 const { requestContext } = require("./middleware/requestContext");
 const { createCommentRouter } = require("./controllers/commentController");
 const { createProjectRouter } = require("./routes/projectRoutes");
+const { createAuthRouter } = require("./routes/authRoutes");
 
 const DEFAULT_CORS_ORIGINS = ["http://localhost:5173"];
 
@@ -13,6 +14,7 @@ function createApp({
   requireAuth = authenticationUnavailable,
   projectService,
   commentService,
+  authService,
 } = {}) {
   const app = express();
   app.disable("x-powered-by");
@@ -23,7 +25,9 @@ function createApp({
   app.get("/health", (_req, res) => {
     res.status(200).json({ status: "ok" });
   });
-
+  if (authService) {
+    app.use("/api/v1/auth", createAuthRouter({ authService }));
+  }
   if (projectService) {
     app.use(
       "/api/v1/projects",
