@@ -195,3 +195,44 @@ test("task routes remain unavailable until project authorization is integrated",
     });
   }
 });
+
+
+test("configured task service mounts task routes behind authentication", async () => {
+  const taskService = {
+    get: async (id, requestUser) => ({
+      id,
+      title: "Integration test task",
+      requestedBy: requestUser.id,
+    }),
+  };
+
+  const app = createApp({
+    taskService,
+    requireAuth: (req, _res, next) => {
+      req.user = user;
+      next();
+    },
+  });
+
+  const tempServer = app.listen(0);
+  await once(tempServer, "listening");
+
+  try {
+    const response = await fetch(
+      `http://127.0.0.1:${tempServer.address().port}/api/v1/tasks/50`,
+    );
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      data: {
+        id: "50",
+        title: "Integration test task",
+        requestedBy: user.id,
+      },
+    });
+  } finally {
+    await new Promise((resolve, reject) => {
+      tempServer.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
+});
