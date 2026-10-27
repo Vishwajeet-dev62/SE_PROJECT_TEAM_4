@@ -5,6 +5,7 @@ const jwt = require("jsonwebtoken");
 const request = require("supertest");
 const { createApp } = require("../src/app");
 const { ApiError } = require("../src/errors/apiError");
+const { createRequireAuth } = require("../src/middleware/requireAuth");
 const { AuthService } = require("../src/services/authService");
 const { validateRegister } = require("../src/validators/authValidators");
 
@@ -39,13 +40,28 @@ function createFakeRepository() {
 
 function createTestApp() {
   const userRepository = createFakeRepository();
+  const revokedTokens = new Set();
+  const tokenRevocationRepository = {
+    revoke: async ({ tokenId }) => revokedTokens.add(tokenId),
+    isRevoked: async (tokenId) => revokedTokens.has(tokenId),
+  };
   const authService = new AuthService({
     userRepository,
+    tokenRevocationRepository,
     jwtSecret: SECRET,
     jwtExpiresIn: "30m",
     bcryptCost: 4, // fast for tests; production default is 12
   });
-  return { app: createApp({ authService }), userRepository };
+  const requireAuth = createRequireAuth({
+    jwtSecret: SECRET,
+    userRepository,
+    tokenRevocationRepository,
+  });
+  return {
+    app: createApp({ authService, requireAuth }),
+    revokedTokens,
+    userRepository,
+  };
 }
 
 const validBody = { name: "Anjali", email: "Anjali@Example.com", password: "Passw0rdOK" };
@@ -147,6 +163,48 @@ test("login requires email and password", async () => {
   const response = await request(app).post("/api/v1/auth/login").send({ email: "a@b.co" });
   assert.equal(response.status, 400);
   assert.equal(response.body.error.code, "VALIDATION_ERROR");
+});
+
+test("authenticated user can retrieve the current public account", async () => {
+  const { app } = createTestApp();
+  await request(app).post("/api/v1/auth/register").send(validBody);
+  const login = await request(app)
+    .post("/api/v1/auth/login")
+    .send({ email: validBody.email, password: validBody.password });
+
+  const response = await request(app)
+    .get("/api/v1/auth/me")
+    .set("Authorization", `Bearer ${login.body.data.accessToken}`);
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.body.data.user, {
+    id: "1",
+    name: "Anjali",
+    email: "anjali@example.com",
+    role: "MEMBER",
+    createdAt: "2026-10-23 10:00:00.000",
+  });
+});
+
+test("logout revokes the access token and repeated use is rejected", async () => {
+  const { app, revokedTokens } = createTestApp();
+  await request(app).post("/api/v1/auth/register").send(validBody);
+  const login = await request(app)
+    .post("/api/v1/auth/login")
+    .send({ email: validBody.email, password: validBody.password });
+  const accessToken = login.body.data.accessToken;
+
+  const logout = await request(app)
+    .post("/api/v1/auth/logout")
+    .set("Authorization", `Bearer ${accessToken}`);
+  assert.equal(logout.status, 204);
+  assert.equal(revokedTokens.size, 1);
+
+  const afterLogout = await request(app)
+    .get("/api/v1/auth/me")
+    .set("Authorization", `Bearer ${accessToken}`);
+  assert.equal(afterLogout.status, 401);
+  assert.equal(afterLogout.body.error.code, "SESSION_REVOKED");
 });
 
 test("AuthService refuses to start without a strong JWT secret", () => {

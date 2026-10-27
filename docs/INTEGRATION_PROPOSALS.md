@@ -36,10 +36,10 @@ req.user = {
 Roles are `ADMIN` and `MEMBER`. Member 2 normalizes safe numeric IDs and
 decimal-string IDs; decimal strings should be used for values outside
 JavaScript's safe-integer range. The auth service issues 30-minute HS256
-access tokens by default. The API currently implements register/login, but
-not the contract's logout/revocation or `GET /auth/me` endpoints. The
-frontend also has no login flow or token-provider wiring; test-only identity
-injection is not enabled in production.
+access tokens by default. The API implements register, login, logout with
+server-side token revocation, and `GET /auth/me`. The frontend sends the
+token from in-memory session state and does not persist it in browser storage;
+test-only identity injection is not enabled in production.
 
 ### Project access middleware
 
@@ -96,8 +96,10 @@ inside `data`, for example:
 Cards use only the contract task fields. The task router is mounted by the configured production entry point behind
 shared JWT authentication, and its service checks project access and
 archived-project state. Task updates are restricted to the task creator or
-assigned user. The client request is implemented, but browser-authenticated
-status changes and persistence against live MySQL remain unverified.
+assigned user. A live API test verified an assignee's status update persisted
+in MySQL and that a non-assignee member was denied. The frontend board's
+authenticated browser flow was not connected to the live database during
+that verification.
 
 ### Database and JSON representation
 
@@ -108,6 +110,7 @@ The expected migration ordering is:
 3. `004_tasks` — Member 1 (present in the current repository).
 4. `005_comments.sql` — Member 2.
 5. `006_audit_logs.sql` and `007_password_reset_tokens.sql` — Member 3.
+6. `008_revoked_tokens.sql` — authentication integration.
 
 Projects have `id`, `owner_id`, `name`, `description`, `archived`,
 `created_at`, and `updated_at`. Membership uses a unique `(project_id, user_id)`
@@ -163,7 +166,8 @@ current UTC date and whose status is not `DONE`.
 
 The shared contract records the category/tag scope, JWT session and
 revocation policy, reminder behavior, pagination limits, and project-access
-interface. Remaining integration work is adding a frontend login/token flow,
-implementing the contract's logout/revocation and `GET /auth/me` endpoints in
-Member 3's auth module, and verifying migrations and persistence against a
-disposable live MySQL database.
+interface. The Member 2 UI now uses the backend JWT contract and logout
+revocation. The migration set and project/task/comment persistence were
+verified against disposable live MySQL on 2026-10-27. Password reset and
+account lockout remain in Member 3's auth scope. The live verification was a
+one-off run rather than a checked-in automated MySQL integration suite.

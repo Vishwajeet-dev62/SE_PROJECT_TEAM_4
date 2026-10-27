@@ -3,13 +3,13 @@
 All routes use `/api/v1`, JSON request and response bodies, and the common
 error shape `{ "error": { "code": "...", "message": "..." } }`. In the
 production server, protected routes use Member 3's JWT middleware and require
-an authorization header containing a bearer JWT. The frontend currently has
-no login screen and its API client supplies no token, so protected UI
-operations cannot yet be completed through the browser.
+an authorization header containing a bearer JWT. The frontend login screen
+keeps the access token in memory and clears it on logout or unauthorized
+responses; it does not persist credentials in browser storage.
 
-The authentication router currently implements `POST /auth/register` and
-`POST /auth/login`. `POST /auth/logout` and `GET /auth/me` from the shared
-contract are not implemented. Login returns
+The authentication router implements `POST /auth/register`,
+`POST /auth/login`, authenticated `POST /auth/logout`, and authenticated
+`GET /auth/me`. Logout revokes the presented token until its expiry. Login returns
 `{ "data": { "accessToken": "...", "user": { ... } } }`; registration returns
 `{ "data": { "user": { ... } } }`.
 
@@ -92,8 +92,9 @@ Task writes enforce project access and archived-project restrictions, but the
 task service also enforces that only the task creator or assigned user can
 edit a task. The repository repeats that check in the update predicate so a
 concurrent assignment change cannot invalidate the permission decision. The
-frontend status-change call is covered by component tests; persistence against
-live MySQL has not been verified.
+frontend sends the bearer token and refreshes the board after a successful
+status update. Component/API tests cover this flow; persistence against live
+MySQL has not been verified.
 
 ## Comments
 

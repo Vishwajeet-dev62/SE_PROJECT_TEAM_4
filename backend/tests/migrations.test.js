@@ -21,6 +21,7 @@ test("Member 2 migrations have stable order and explicit external dependencies",
     "005_comments.sql",
     "006_audit_logs.sql",
     "007_password_reset_tokens.sql",
+    "008_revoked_tokens.sql",
   ]);
 
   assert.equal(MIGRATION_DEPENDENCIES["001_users.sql"], undefined);
@@ -41,6 +42,7 @@ test("Member 2 migrations have stable order and explicit external dependencies",
   assert.deepEqual(MIGRATION_DEPENDENCIES["007_password_reset_tokens.sql"], [
     "users",
   ]);
+  assert.deepEqual(MIGRATION_DEPENDENCIES["008_revoked_tokens.sql"], ["users"]);
 });
 
 test("project, membership, and comment schemas use InnoDB and contract keys", () => {
@@ -139,10 +141,11 @@ test("migration runner applies sorted files once under a database lock", async (
     "005_comments.sql",
     "006_audit_logs.sql",
     "007_password_reset_tokens.sql",
+    "008_revoked_tokens.sql",
   ]);
 
-  assert.equal(state.applied.size, 7);
-  assert.equal(state.executed.length, 7);
+  assert.equal(state.applied.size, 8);
+  assert.equal(state.executed.length, 8);
   assert.equal(state.lockReleased, true);
 });
 
@@ -169,6 +172,16 @@ test("audit log and reset token schemas use InnoDB and required keys", () => {
   assert.match(reset, /used_at/);
   assert.match(reset, /expires_at/);
   assert.match(reset, /ENGINE=InnoDB/);
+});
+
+test("revoked-token schema expires entries and references their user", () => {
+  const revoked = readMigration("008_revoked_tokens.sql");
+
+  assert.match(revoked, /token_id CHAR\(36\) NOT NULL/);
+  assert.match(revoked, /expires_at DATETIME\(3\) NOT NULL/);
+  assert.match(revoked, /FOREIGN KEY \(user_id\) REFERENCES users \(id\)/);
+  assert.match(revoked, /KEY idx_revoked_tokens_expiry \(expires_at\)/);
+  assert.match(revoked, /ENGINE=InnoDB/);
 });
 
 

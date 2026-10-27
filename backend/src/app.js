@@ -28,7 +28,7 @@ function createApp({
     res.status(200).json({ status: "ok" });
   });
   if (authService) {
-    app.use("/api/v1/auth", createAuthRouter({ authService }));
+    app.use("/api/v1/auth", createAuthRouter({ authService, requireAuth }));
   }
   if (projectService) {
     app.use(

@@ -51,14 +51,30 @@ The API health endpoint is `http://localhost:3000/health`; the Vite client is
 
 ## Authentication integration status
 
-Protected backend routes require Member 3's real JWT middleware. Until that
-middleware is integrated, protected routes intentionally return
-`503 AUTHENTICATION_UNAVAILABLE`; the application does not enable a mock
-identity or mock project/task data. Kanban status changes call Member 1's
-`PATCH /api/v1/tasks/:id` endpoint, but task reads and writes fail closed until
-authentication, project membership, and owner-or-assignee authorization are
-integrated. The task-table migration `004_tasks.sql` is also missing, so a
-fresh database cannot complete the migration set.
+The client supports account registration and sign-in using the backend's
+`POST /api/v1/auth/register` and `/login` endpoints. Access tokens stay in
+React memory, are sent as bearer authorization for protected requests, and
+are not written to local or session storage. Sign-out calls the authenticated
+`POST /api/v1/auth/logout`; the backend revokes that JWT until expiry.
+`GET /api/v1/auth/me` returns the authenticated public user. A page refresh
+requires signing in again.
+
+The production server wires JWT authentication to project, task, and comment
+routes. Project access and archived-project rules are enforced server-side;
+task updates additionally require the task creator or assignee. The task
+status endpoint used by the Kanban board is the shared
+`PATCH /api/v1/tasks/:id` endpoint.
+
+The complete migration sequence is `001_users.sql` through
+`008_revoked_tokens.sql`. In addition to the automated migration-runner tests,
+the full sequence was applied to an empty disposable MySQL database on
+2026-10-27 and verified as idempotent on a second run. Live HTTP checks
+exercised authentication, project and membership permissions, task/Kanban
+persistence, dashboard aggregates, comments, archiving, foreign-key
+enforcement, and logout revocation. Temporary records were removed and the
+application tables were confirmed empty. This live verification was a
+one-off run; the repository's automated migration tests still use a fake
+pool.
 
 Current cross-member assumptions and decisions are tracked in
 [integration proposals](./docs/INTEGRATION_PROPOSALS.md). See the [Member 2
@@ -87,3 +103,28 @@ Pop-Location
 ```
 
 CI runs these checks on pull requests to `main`.
+
+### Optional live MySQL integration test
+
+The separate `backend` script exercises the real Express routes and MySQL
+persistence. It does not run as part of `npm test` and never runs migrations.
+First apply the documented migrations manually to an isolated database whose
+name contains `test`, `testing`, or `disposable`. The script requires the
+explicit `M2_MYSQL_INTEGRATION=1` opt-in, checks the selected database and
+migration ledger, and removes only records matching its unique test markers.
+It refuses ambiguous, production-looking, or non-test database names and
+reports cleanup failures.
+
+Run it only with approval to create and remove temporary test records:
+
+```powershell
+Push-Location backend
+$env:M2_MYSQL_INTEGRATION = "1"
+npm run test:mysql
+Remove-Item Env:M2_MYSQL_INTEGRATION
+Pop-Location
+```
+
+The live integration run on 2026-10-27 passed against an empty disposable
+database. The checked-in guarded script was added afterward and has not itself
+been run; ordinary unit tests do not verify its live MySQL behavior.
