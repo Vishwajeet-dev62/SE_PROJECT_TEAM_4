@@ -1,10 +1,17 @@
 # Member 2 API reference
 
 All routes use `/api/v1`, JSON request and response bodies, and the common
-error shape `{ "error": { "code": "...", "message": "..." } }`. Protected
-routes require the shared JWT authentication middleware. They return
-`503 AUTHENTICATION_UNAVAILABLE` until Member 3's middleware is integrated;
-this is an explicit integration boundary, not an authentication substitute.
+error shape `{ "error": { "code": "...", "message": "..." } }`. In the
+production server, protected routes use Member 3's JWT middleware and require
+an authorization header containing a bearer JWT. The frontend currently has
+no login screen and its API client supplies no token, so protected UI
+operations cannot yet be completed through the browser.
+
+The authentication router currently implements `POST /auth/register` and
+`POST /auth/login`. `POST /auth/logout` and `GET /auth/me` from the shared
+contract are not implemented. Login returns
+`{ "data": { "accessToken": "...", "user": { ... } } }`; registration returns
+`{ "data": { "user": { ... } } }`.
 
 ## Collection pagination
 
@@ -78,13 +85,15 @@ status-grouped task arrays in `data`:
 ```
 
 The board reads the shared `tasks` table; it does not create or update task
-records. Status changes use Member 1's
+records. The production server mounts Member 1's task service behind JWT
+authentication. Status changes use Member 1's
 `PATCH /api/v1/tasks/:id` with `{ "status": "TODO" | "IN_PROGRESS" | "DONE" }`.
-The merged task router is not mounted by the configured server until shared
-authentication, project membership, and task ownership checks are connected.
-The legacy standalone task server also fails closed with
-`503 API_NOT_CONFIGURED`. That cross-member write must be verified against
-Member 1's implementation.
+Task writes enforce project access and archived-project restrictions, but the
+task service also enforces that only the task creator or assigned user can
+edit a task. The repository repeats that check in the update predicate so a
+concurrent assignment change cannot invalidate the permission decision. The
+frontend status-change call is covered by component tests; persistence against
+live MySQL has not been verified.
 
 ## Comments
 

@@ -33,19 +33,21 @@ write logic.
 
 ## Current integration boundaries
 
-- Protected routes return `503 AUTHENTICATION_UNAVAILABLE` until Member 3's
-  real JWT middleware and `req.user` contract are wired. No test identity or
-  production mock auth is enabled.
-- Kanban status persistence depends on Member 1's task `PATCH` route and
-  `tasks` schema. The UI/API client call is implemented, but end-to-end task
-  status persistence is not yet verified.
-- Migration DDL depends on Member 1's `tasks` table. Although the migration
-  runner expects it before `005_comments.sql`, no `004_tasks.sql` exists in the
-  current tree. Local tests validate ordering and prerequisites, not a live
-  MySQL apply.
-- The legacy standalone Member 1 task server now fails closed with
-  `503 API_NOT_CONFIGURED`; it must not be mounted for production use until
-  authentication and project/task authorization are integrated.
+- The production server wires Member 3's JWT middleware and sets the
+  authenticated `req.user`; protected project, task, and comment routes are
+  mounted. No mock production identity is enabled.
+- The frontend does not include login/registration UI or provide a token to
+  its API client. Authenticated browser use of Member 2's features is
+  therefore not yet integrated.
+- The Kanban client calls the mounted Member 1 task `PATCH` route. That
+  service enforces project access, archive state, and the shared task
+  creator-or-assignee edit rule; the repository also enforces that rule
+  atomically in the update query.
+- `004_tasks.sql` is present before `005_comments.sql`. Migration tests
+  validate ordering and runner behavior with a fake pool; they do not prove a
+  live MySQL apply or persistence.
+- The auth API currently implements register and login only; the contract's
+  logout/revocation and `GET /auth/me` endpoints are not present.
 - Pagination defaults, some data fields, and admin write policy remain
   proposals pending team confirmation as recorded in
   [integration proposals](./INTEGRATION_PROPOSALS.md).

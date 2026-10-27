@@ -176,7 +176,7 @@ class TaskRepository {
     return Number(rows[0].total);
   }
 
-  async update(taskId, changes) {
+  async update(taskId, changes, userId) {
     const columns = [];
     const values = [];
 
@@ -211,8 +211,9 @@ class TaskRepository {
        SET ${columns.join(", ")}
        WHERE t.id = ?
          AND t.deleted_at IS NULL
-         AND p.archived = 0`,
-      values,
+         AND p.archived = 0
+         AND (t.created_by = ? OR t.assigned_to = ?)`,
+      [...values, userId, userId],
     );
 
     return result.affectedRows > 0;
