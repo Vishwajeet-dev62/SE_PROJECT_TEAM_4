@@ -5,6 +5,7 @@ const { CommentRepository } = require("../repositories/commentRepository");
 const { ProjectRepository } = require("../repositories/projectRepository");
 const { TaskRepository } = require("../repositories/taskRepository");
 const { UserRepository } = require("../repositories/userRepository");
+const { TokenRevocationRepository } = require("../repositories/tokenRevocationRepository");
 
 const { CommentService } = require("./commentService");
 const { ProjectService } = require("./projectService");
@@ -30,9 +31,11 @@ function createServices(pool, authConfig = {}) {
   });
 
   const userRepository = new UserRepository(pool);
+  const tokenRevocationRepository = new TokenRevocationRepository(pool);
 
   const authService = new AuthService({
     userRepository,
+    tokenRevocationRepository,
     jwtSecret: authConfig.jwtSecret,
     jwtExpiresIn: authConfig.jwtExpiresIn,
   });
@@ -40,6 +43,7 @@ function createServices(pool, authConfig = {}) {
   const requireAuth = createRequireAuth({
     jwtSecret: authConfig.jwtSecret,
     userRepository,
+    tokenRevocationRepository,
   });
 
   return {

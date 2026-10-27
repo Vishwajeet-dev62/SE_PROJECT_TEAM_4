@@ -50,6 +50,7 @@ function ProjectBoard({ api, project }) {
   async function changeStatus(taskId, status) {
     if (project.archived || updatingTask === taskId) return
     const task = Object.values(board).flat().find((item) => item.id === taskId)
+    if (task?.permissions?.canEdit === false) return
     if (task?.status === status) return
     setUpdatingTask(taskId)
     setActionError('')
@@ -134,7 +135,11 @@ function ProjectBoard({ api, project }) {
                   <article
                     className="task-card"
                     key={task.id}
-                    draggable={!project.archived && updatingTask !== task.id}
+                    draggable={
+                      !project.archived &&
+                      task.permissions?.canEdit !== false &&
+                      updatingTask !== task.id
+                    }
                     onDragStart={(event) => event.dataTransfer.setData('text/plain', task.id)}
                   >
                     <div className="task-card-heading">
@@ -152,7 +157,11 @@ function ProjectBoard({ api, project }) {
                       <select
                         id={`status-${task.id}`}
                         value={task.status}
-                        disabled={project.archived || updatingTask === task.id}
+                        disabled={
+                          project.archived ||
+                          task.permissions?.canEdit === false ||
+                          updatingTask === task.id
+                        }
                         onChange={(event) => changeStatus(task.id, event.target.value)}
                       >
                         <option value="TODO">To Do</option>

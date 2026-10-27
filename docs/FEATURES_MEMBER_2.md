@@ -33,28 +33,42 @@ write logic.
 
 ## Current integration boundaries
 
-- Protected routes return `503 AUTHENTICATION_UNAVAILABLE` until Member 3's
-  real JWT middleware and `req.user` contract are wired. No test identity or
-  production mock auth is enabled.
-- Kanban status persistence depends on Member 1's task `PATCH` route and
-  `tasks` schema. The UI/API client call is implemented, but end-to-end task
-  status persistence is not yet verified.
-- Migration DDL depends on Member 1's `tasks` table. Although the migration
-  runner expects it before `005_comments.sql`, no `004_tasks.sql` exists in the
-  current tree. Local tests validate ordering and prerequisites, not a live
-  MySQL apply.
-- The legacy standalone Member 1 task server now fails closed with
-  `503 API_NOT_CONFIGURED`; it must not be mounted for production use until
-  authentication and project/task authorization are integrated.
+- The production server wires Member 3's JWT middleware and sets the
+  authenticated `req.user`; protected project, task, and comment routes are
+  mounted. No mock production identity is enabled.
+- The frontend supports registration, sign-in, bearer-token API access,
+  expiry handling, and sign-out. The token exists only in memory; refreshing
+  the page requires signing in again.
+- The Kanban client calls the mounted Member 1 task `PATCH` route. That
+  service enforces project access, archive state, and the shared task
+  creator-or-assignee edit rule; the repository also enforces that rule
+  atomically in the update query.
+- `004_tasks.sql` is present before `005_comments.sql`. Migration tests
+  validate ordering and runner behavior with a fake pool. A separate live
+  MySQL run applied all migrations and verified Member 2 persistence on
+  2026-10-27.
+- Logout revokes the presented JWT server-side through the
+  `008_revoked_tokens.sql` table; `GET /auth/me` returns the current public
+  user. Forgot/reset password and account-lockout behavior remain
+  authentication-module requirements outside Member 2's feature ownership.
 - Pagination defaults, some data fields, and admin write policy remain
   proposals pending team confirmation as recorded in
   [integration proposals](./INTEGRATION_PROPOSALS.md).
 
 ## Verification evidence
 
-Backend tests cover route validation/statuses, permission rules, archive
-behavior, aggregation, task grouping, query parameterization, and migration
-preconditions. Frontend tests cover API client behavior, project loading and
-creation, dashboard rendering, board status calls/read-only state, and comment
-create/edit/delete behavior. See the
+Backend tests cover route validation/statuses, JWT revocation, permission
+rules, archive behavior, aggregation, task grouping, query parameterization,
+and migration preconditions. Frontend tests cover authentication requests,
+token forwarding/clearing, project loading and creation, dashboard rendering,
+board status calls/read-only state, and comment create/edit/delete behavior. See the
 [requirements traceability matrix](./REQUIREMENTS_TRACEABILITY.md).
+
+Live verification on 2026-10-27 used real MySQL-backed HTTP requests and
+separate owner, member, collaborator, outsider, and administrator accounts.
+It verified project and membership operations, cross-project denials, task
+status persistence, dashboard counts, comment permissions and pagination,
+archive read-only behavior, and token revocation. Test records were removed;
+the application tables were confirmed empty afterward. Project restoration
+is not part of the shared contract; archiving is the defined lifecycle
+operation.

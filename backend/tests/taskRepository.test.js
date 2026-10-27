@@ -147,14 +147,15 @@ test("update only updates supported supplied fields", async () => {
   const updated = await repository.update("42", {
     title: "Updated report",
     status: "IN_PROGRESS",
-  });
+  }, "20");
 
   assert.equal(updated, true);
   assert.match(pool.calls[0].sql, /INNER JOIN projects p/);
   assert.match(pool.calls[0].sql, /t\.deleted_at IS NULL/);
   assert.match(pool.calls[0].sql, /p\.archived = 0/);
+  assert.match(pool.calls[0].sql, /t\.created_by = \? OR t\.assigned_to = \?/);
   assert.deepEqual(pool.calls[0].params, [
-    "Updated report", "IN_PROGRESS", "42",
+    "Updated report", "IN_PROGRESS", "42", "20", "20",
   ]);
 });
 

@@ -10,6 +10,7 @@ const task = {
   status: 'TODO',
   priority: 'HIGH',
   dueDate: '2026-11-02',
+  permissions: { canEdit: true },
 }
 
 describe('ProjectBoard', () => {
@@ -53,6 +54,28 @@ describe('ProjectBoard', () => {
     render(<ProjectBoard api={api} project={{ ...project, archived: true }} />)
 
     expect(await screen.findByLabelText(`Change status for ${task.title}`)).toBeDisabled()
+    expect(api.updateTaskStatus).not.toHaveBeenCalled()
+  })
+
+  it('disables task writes when the backend denies creator/assignee permission', async () => {
+    const restrictedTask = {
+      ...task,
+      permissions: { canEdit: false },
+    }
+    const api = {
+      getBoard: vi.fn().mockResolvedValue({
+        data: { TODO: [restrictedTask], IN_PROGRESS: [], DONE: [] },
+        pagination: { page: 1, limit: 50, total: 1 },
+      }),
+      updateTaskStatus: vi.fn(),
+    }
+
+    render(<ProjectBoard api={api} project={project} />)
+
+    expect(await screen.findByLabelText(`Change status for ${task.title}`)).toBeDisabled()
+    fireEvent.change(screen.getByLabelText(`Change status for ${task.title}`), {
+      target: { value: 'DONE' },
+    })
     expect(api.updateTaskStatus).not.toHaveBeenCalled()
   })
 })

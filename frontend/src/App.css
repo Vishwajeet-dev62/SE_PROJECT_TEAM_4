@@ -48,6 +48,57 @@
   padding: 42px 0 64px;
 }
 
+.account-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.account-name {
+  color: #555c73;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.auth-page {
+  display: grid;
+  place-items: center;
+  min-height: min(720px, calc(100vh - 180px));
+}
+
+.auth-card {
+  display: grid;
+  gap: 16px;
+  width: min(100%, 460px);
+  border: 1px solid #e1e5ef;
+  border-radius: 16px;
+  padding: clamp(22px, 5vw, 36px);
+  background: #fff;
+  box-shadow: 0 12px 36px rgb(31 38 71 / 7%);
+}
+
+.auth-card h1 {
+  margin-bottom: 0;
+}
+
+.auth-form {
+  gap: 14px;
+}
+
+.form-hint {
+  margin: 0;
+  color: #687087;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.auth-switch {
+  margin: 0;
+  color: #555c73;
+  font-size: 13px;
+  text-align: center;
+}
+
 .page-section,
 .workspace {
   display: grid;

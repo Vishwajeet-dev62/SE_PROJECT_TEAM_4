@@ -3,13 +3,23 @@ const jwt = require("jsonwebtoken");
 const { ApiError } = require("../errors/apiError");
 const { parseId } = require("../utils/ids");
 
-function createRequireAuth({ jwtSecret, userRepository }) {
+function createRequireAuth({
+  jwtSecret,
+  userRepository,
+  tokenRevocationRepository,
+}) {
   if (typeof jwtSecret !== "string" || jwtSecret.length < 32) {
     throw new Error("A strong JWT secret is required for authentication");
   }
 
   if (!userRepository || typeof userRepository.findById !== "function") {
     throw new Error("A user repository is required for authentication");
+  }
+  if (
+    !tokenRevocationRepository ||
+    typeof tokenRevocationRepository.isRevoked !== "function"
+  ) {
+    throw new Error("A token revocation repository is required for authentication");
   }
 
   return async function requireAuth(req, _res, next) {
@@ -42,7 +52,9 @@ function createRequireAuth({ jwtSecret, userRepository }) {
       if (
         !payload ||
         typeof payload !== "object" ||
-        typeof payload.sub !== "string"
+        typeof payload.sub !== "string" ||
+        typeof payload.jti !== "string" ||
+        !Number.isSafeInteger(payload.exp)
       ) {
         throw new Error("Invalid token claims");
       }
@@ -59,6 +71,12 @@ function createRequireAuth({ jwtSecret, userRepository }) {
     }
 
     try {
+      if (await tokenRevocationRepository.isRevoked(payload.jti)) {
+        return next(
+          new ApiError(401, "SESSION_REVOKED", "Authentication session has ended"),
+        );
+      }
+
       const user = await userRepository.findById(payload.sub);
 
       if (
@@ -78,6 +96,10 @@ function createRequireAuth({ jwtSecret, userRepository }) {
       req.user = {
         id: parseId(user.id, "user id"),
         role: user.role,
+      };
+      req.auth = {
+        tokenId: payload.jti,
+        expiresAt: payload.exp,
       };
 
       return next();

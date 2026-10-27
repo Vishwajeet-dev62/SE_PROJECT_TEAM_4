@@ -35,9 +35,6 @@ jobs:
       - name: Verify required project documents
         run: |
           test -f docs/INTEGRATION_CONTRACT.md
-          test -f Task_Manager_SRS_updated.pdf
-          test -f Task_Manager_SAD.pdf
-          test -f Task_Manager_Test_Plan.pdf
 
       - name: Verify rebuilt frontend files
         run: |

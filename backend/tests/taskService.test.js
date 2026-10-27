@@ -209,18 +209,50 @@ test("create rejects client-controlled creator and project fields", async () => 
   );
 });
 
-test("update validates changes and returns the updated task", async () => {
+test("task creator can update and the response reflects edit permission", async () => {
   const { service } = createDependencies();
   const created = await service.create("7", { title: "Old title" }, owner);
 
-  const updated = await service.update(
-    created.id,
-    { title: "New title", status: "IN_PROGRESS" },
-    member,
-  );
+  const updated = await service.update(created.id, {
+    title: "New title",
+    status: "IN_PROGRESS",
+  }, owner);
 
   assert.equal(updated.title, "New title");
   assert.equal(updated.status, "IN_PROGRESS");
+  assert.equal(updated.permissions.canEdit, true);
+});
+
+test("assigned project members can update tasks", async () => {
+  const { service } = createDependencies();
+  const created = await service.create(
+    "7",
+    { title: "Assigned task", assigned_to: member.id },
+    owner,
+  );
+
+  const updated = await service.update(
+    created.id,
+    { status: "IN_PROGRESS" },
+    member,
+  );
+
+  assert.equal(updated.status, "IN_PROGRESS");
+  assert.equal(updated.permissions.canEdit, true);
+});
+
+test("project members who are neither creator nor assignee cannot update tasks", async () => {
+  const { service } = createDependencies();
+  const created = await service.create("7", { title: "Owner task" }, owner);
+
+  await assert.rejects(
+    service.update(created.id, { title: "Changed by member" }, member),
+    (error) => error.status === 403 && error.code === "FORBIDDEN",
+  );
+
+  const memberTasks = await service.list("7", member, {});
+  assert.equal(memberTasks.data[0].title, "Owner task");
+  assert.equal(memberTasks.data[0].permissions.canEdit, false);
 });
 
 test("outsiders cannot update tasks", async () => {
