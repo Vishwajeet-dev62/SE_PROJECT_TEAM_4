@@ -45,6 +45,28 @@ describe('API client', () => {
     expect(response).toBeNull()
   })
 
+  it('clears the authenticated session on an unauthorized API response', async () => {
+    const onUnauthorized = vi.fn()
+    const client = createApiClient({
+      baseUrl: 'http://localhost:3000/api/v1',
+      fetchImpl: vi.fn().mockResolvedValue({
+        ok: false,
+        status: 401,
+        json: async () => ({
+          error: { code: 'SESSION_REVOKED', message: 'Session ended' },
+        }),
+      }),
+      tokenProvider: () => 'expired-session-token',
+      onUnauthorized,
+    })
+
+    await expect(client.listProjects()).rejects.toMatchObject({
+      status: 401,
+      code: 'SESSION_REVOKED',
+    })
+    expect(onUnauthorized).toHaveBeenCalledOnce()
+  })
+
   it('preserves the shared error format for failed requests', async () => {
     const client = createApiClient({
       baseUrl: 'http://localhost:3000/api/v1',

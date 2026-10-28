@@ -93,11 +93,20 @@ class TaskService {
 
   async update(taskIdInput, body, userInput) {
     const user = requireUser(userInput);
-    const { task, project } = await this.projectService.authorizeTask(
+    const { task: authorizedTask, project } = await this.projectService.authorizeTask(
       taskIdInput,
       user,
       { write: true },
     );
+    const task = await this.taskRepository.findById(authorizedTask.id);
+    if (!task) throw notFound();
+    if (!canEditTask(task, user)) {
+      throw new ApiError(
+        403,
+        "FORBIDDEN",
+        "You do not have permission to edit this task",
+      );
+    }
 
     const { input, errors } = validateTaskBody(body, { partial: true });
     if (errors.length) throw validationError("Task input is invalid", errors);
@@ -112,7 +121,7 @@ class TaskService {
     }
     if (changes.due_date === "") changes.due_date = null;
 
-    const updated = await this.taskRepository.update(task.id, changes);
+    const updated = await this.taskRepository.update(task.id, changes, user.id);
 
     if (!updated) {
       await this.projectService.authorizeTask(task.id, user, { write: true });
@@ -257,12 +266,16 @@ class TaskService {
     return {
       ...task,
       permissions: {
-        canEdit: !project.archived,
+        canEdit: !project.archived && canEditTask(task, user),
         canDelete: !project.archived,
         canRestore: Boolean(task.deletedAt) && !project.archived,
       },
     };
   }
+}
+
+function canEditTask(task, user) {
+  return task.createdBy === user.id || task.assignedTo === user.id;
 }
 
 function validationError(message, errors) {

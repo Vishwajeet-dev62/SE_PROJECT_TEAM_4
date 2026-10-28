@@ -22,6 +22,10 @@ function createRepository(user) {
   };
 }
 
+function createRevocationRepository(isRevoked = false) {
+  return { isRevoked: async () => isRevoked };
+}
+
 function invokeMiddleware(middleware, req) {
   return new Promise((resolve, reject) => {
     middleware(req, createResponse(), (error) => {
@@ -34,6 +38,7 @@ function invokeMiddleware(middleware, req) {
 function signToken(payload, options = {}) {
   return jwt.sign(payload, SECRET, {
     algorithm: "HS256",
+    jwtid: "test-token-id",
     expiresIn: "5m",
     ...options,
   });
@@ -43,6 +48,7 @@ test("missing token is rejected", async () => {
   const middleware = createRequireAuth({
     jwtSecret: SECRET,
     userRepository: createRepository(null),
+    tokenRevocationRepository: createRevocationRepository(),
   });
 
   await assert.rejects(
@@ -55,6 +61,7 @@ test("invalid token is rejected", async () => {
   const middleware = createRequireAuth({
     jwtSecret: SECRET,
     userRepository: createRepository(null),
+    tokenRevocationRepository: createRevocationRepository(),
   });
 
   await assert.rejects(
@@ -67,6 +74,7 @@ test("expired token is rejected", async () => {
   const middleware = createRequireAuth({
     jwtSecret: SECRET,
     userRepository: createRepository(null),
+    tokenRevocationRepository: createRevocationRepository(),
   });
 
   const token = signToken(
@@ -88,6 +96,7 @@ test("inactive user is rejected even with a valid token", async () => {
       role: "MEMBER",
       active: false,
     }),
+    tokenRevocationRepository: createRevocationRepository(),
   });
 
   const token = signToken({ sub: "1", role: "MEMBER" });
@@ -106,6 +115,7 @@ test("valid token uses the user's current database role", async () => {
       role: "ADMIN",
       active: true,
     }),
+    tokenRevocationRepository: createRevocationRepository(),
   });
 
   // The token says MEMBER, but the current database role is ADMIN.
@@ -117,4 +127,28 @@ test("valid token uses the user's current database role", async () => {
     id: "1",
     role: "ADMIN",
   });
+  assert.deepEqual(req.auth, {
+    tokenId: "test-token-id",
+    expiresAt: jwt.decode(token).exp,
+  });
+});
+
+test("revoked tokens are rejected before reaching protected routes", async () => {
+  const middleware = createRequireAuth({
+    jwtSecret: SECRET,
+    userRepository: createRepository({
+      id: "1",
+      role: "MEMBER",
+      active: true,
+    }),
+    tokenRevocationRepository: createRevocationRepository(true),
+  });
+
+  await assert.rejects(
+    invokeMiddleware(
+      middleware,
+      createRequest(signToken({ sub: "1", role: "MEMBER" })),
+    ),
+    (error) => error.status === 401 && error.code === "SESSION_REVOKED",
+  );
 });

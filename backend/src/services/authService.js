@@ -10,6 +10,7 @@ const DEFAULT_BCRYPT_COST = 12; // SRS TM-SR-002 requires cost >= 10
 class AuthService {
   constructor({
     userRepository,
+    tokenRevocationRepository,
     jwtSecret,
     jwtExpiresIn = "30m",
     bcryptCost = DEFAULT_BCRYPT_COST,
@@ -19,7 +20,14 @@ class AuthService {
         `JWT_SECRET must be set to at least ${MIN_SECRET_LENGTH} characters`,
       );
     }
+    if (
+      !tokenRevocationRepository ||
+      typeof tokenRevocationRepository.revoke !== "function"
+    ) {
+      throw new Error("A token revocation repository is required for authentication");
+    }
     this.userRepository = userRepository;
+    this.tokenRevocationRepository = tokenRevocationRepository;
     this.jwtSecret = jwtSecret;
     this.jwtExpiresIn = jwtExpiresIn;
     this.bcryptCost = bcryptCost;
@@ -48,6 +56,22 @@ class AuthService {
       accessToken: this.signToken(user),
       user: toPublicUser(user),
     };
+  }
+
+  async logout({ tokenId, userId, expiresAt }) {
+    await this.tokenRevocationRepository.revoke({
+      tokenId,
+      userId,
+      expiresAt: new Date(expiresAt * 1000),
+    });
+  }
+
+  async getCurrentUser(userId) {
+    const user = await this.userRepository.findById(userId);
+    if (!user || !user.active) {
+      throw new ApiError(401, "UNAUTHENTICATED", "User is unavailable or inactive");
+    }
+    return toPublicUser(user);
   }
 
   signToken(user) {

@@ -14,6 +14,7 @@ export function createApiClient({
   baseUrl = import.meta.env.VITE_API_BASE_URL || DEFAULT_API_BASE_URL,
   fetchImpl = globalThis.fetch,
   tokenProvider = () => null,
+  onUnauthorized = () => {},
 } = {}) {
   const normalizedBaseUrl = baseUrl.replace(/\/+$/, '')
 
@@ -69,6 +70,9 @@ export function createApiClient({
     }
 
     if (!response.ok) {
+      if (response.status === 401) {
+        onUnauthorized()
+      }
       const apiError = payload?.error
       throw new ApiRequestError(
         response.status,
@@ -82,6 +86,10 @@ export function createApiClient({
   }
 
   return {
+    register: (body) => request('/auth/register', { method: 'POST', body }),
+    login: (body) => request('/auth/login', { method: 'POST', body }),
+    logout: () => request('/auth/logout', { method: 'POST' }),
+    getCurrentUser: () => request('/auth/me'),
     listProjects: (query) => request('/projects', { query }),
     getProject: (id) => request(`/projects/${encodeURIComponent(id)}`),
     createProject: (body) => request('/projects', { method: 'POST', body }),

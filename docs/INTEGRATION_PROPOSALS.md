@@ -22,8 +22,9 @@ contract.
 
 ### Authentication identity
 
-Member 3's `requireAuth` must validate the JWT and attach the authenticated
-identity specified by the contract:
+The production server creates Member 3's `requireAuth` middleware using the
+configured JWT secret and user repository. It validates the JWT and attaches
+the authenticated identity:
 
 ```js
 req.user = {
@@ -34,10 +35,11 @@ req.user = {
 
 Roles are `ADMIN` and `MEMBER`. Member 2 normalizes safe numeric IDs and
 decimal-string IDs; decimal strings should be used for values outside
-JavaScript's safe-integer range. Member 2 does not issue, parse, or persist
-tokens. Until Member 3's real middleware is integrated, protected endpoints
-fail explicitly with `503 AUTHENTICATION_UNAVAILABLE`; test-only identity
-injection is not enabled in the production entry point.
+JavaScript's safe-integer range. The auth service issues 30-minute HS256
+access tokens by default. The API implements register, login, logout with
+server-side token revocation, and `GET /auth/me`. The frontend sends the
+token from in-memory session state and does not persist it in browser storage;
+test-only identity injection is not enabled in production.
 
 ### Project access middleware
 
@@ -51,11 +53,11 @@ router.get("/:id", requireAuth, requireProjectMember((req) => req.params.id));
 ```
 
 The helper must run after authentication, resolve the project from the
-resource relationship, and reject writes to archived projects. Member 1's task
-routes must resolve a task's `project_id` before checking membership; they
+resource relationship, and reject writes to archived projects. Member 1's
+task service resolves the task's `project_id` before checking membership; it
 must not trust a client-supplied project ID in place of the task relationship.
-The combined task routes still need this authorization wiring before they can
-be mounted in the production server.
+Task updates also require the task creator or assigned user, with that
+restriction enforced in the update query.
 
 For project settings and membership writes, this implementation allows the
 project owner. Administrators may archive but may not edit settings or
@@ -91,13 +93,13 @@ inside `data`, for example:
 }
 ```
 
-Cards use only the contract task fields. The merged task router is not mounted
-in the configured production entry point. It lacks the shared authentication,
-project-membership, and owner-or-assignee authorization wiring. The legacy
-standalone task server now returns `503 API_NOT_CONFIGURED` rather than exposing
-unauthenticated task writes. The client request is implemented, but status
-persistence is not considered integrated until those checks and a live task
-schema are available.
+Cards use only the contract task fields. The task router is mounted by the configured production entry point behind
+shared JWT authentication, and its service checks project access and
+archived-project state. Task updates are restricted to the task creator or
+assigned user. A live API test verified an assignee's status update persisted
+in MySQL and that a non-assignee member was denied. The frontend board's
+authenticated browser flow was not connected to the live database during
+that verification.
 
 ### Database and JSON representation
 
@@ -105,9 +107,10 @@ The expected migration ordering is:
 
 1. `001_users` — Member 3.
 2. `002_projects` and `003_project_members` — Member 2.
-3. `004_tasks` — Member 1 (**not present in the current repository**).
+3. `004_tasks` — Member 1 (present in the current repository).
 4. `005_comments.sql` — Member 2.
 5. `006_audit_logs.sql` and `007_password_reset_tokens.sql` — Member 3.
+6. `008_revoked_tokens.sql` — authentication integration.
 
 Projects have `id`, `owner_id`, `name`, `description`, `archived`,
 `created_at`, and `updated_at`. Membership uses a unique `(project_id, user_id)`
@@ -161,9 +164,10 @@ current UTC date and whose status is not `DONE`.
 
 ## Remaining integration work
 
-The shared contract now records the category/tag scope, JWT session and
+The shared contract records the category/tag scope, JWT session and
 revocation policy, reminder behavior, pagination limits, and project-access
-interface. Remaining work is wiring Member 3's authentication into the
-combined server, adding server-side project/task authorization to the task
-routes, and verifying the migration set against Member 1's task schema and a
-live MySQL instance.
+interface. The Member 2 UI now uses the backend JWT contract and logout
+revocation. The migration set and project/task/comment persistence were
+verified against disposable live MySQL on 2026-10-27. Password reset and
+account lockout remain in Member 3's auth scope. The live verification was a
+one-off run rather than a checked-in automated MySQL integration suite.
