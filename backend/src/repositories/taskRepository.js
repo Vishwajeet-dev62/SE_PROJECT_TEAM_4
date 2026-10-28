@@ -26,7 +26,7 @@ class TaskRepository {
        )
        SELECT p.id, ?, ?, ?, ?, ?, ?, ?, ?
        FROM projects p
-       WHERE p.id = ? AND p.archived = 0`,
+       WHERE p.id = ? AND p.is_archived = 0`,
       [
         createdBy,
         assignedTo,
@@ -53,14 +53,16 @@ class TaskRepository {
               t.category_id, t.title, t.description, t.status,
               t.priority, t.due_date, t.deleted_at,
               t.created_at, t.updated_at,
-              p.owner_id, p.archived
+              p.owner_id, p.is_archived AS archived
        FROM tasks t
        INNER JOIN projects p ON p.id = t.project_id
        WHERE t.id = ? ${deletedCondition}`,
       [taskId],
     );
 
-    if (rows.length === 0) return null;
+    if (rows.length === 0) {
+      return null;
+    }
 
     const row = rows[0];
 
@@ -68,25 +70,30 @@ class TaskRepository {
       ...mapTask(row),
       deletedAt: toIso(row.deleted_at),
       ownerId: String(row.owner_id),
-      archived: row.archived === 1 ||
+      archived:
+        row.archived === 1 ||
         row.archived === true ||
         row.archived === "1",
     };
   }
 
-  async listForProject(projectId, {
-    limit,
-    offset,
-    status,
-    priority,
-    assignedTo,
-    search,
-    dueBefore,
-  }) {
+  async listForProject(
+    projectId,
+    {
+      limit,
+      offset,
+      status,
+      priority,
+      assignedTo,
+      search,
+      dueBefore,
+    },
+  ) {
     const conditions = [
       "t.project_id = ?",
       "t.deleted_at IS NULL",
     ];
+
     const values = [projectId];
 
     if (status !== undefined) {
@@ -128,17 +135,21 @@ class TaskRepository {
     return rows.map(mapTask);
   }
 
-  async countForProject(projectId, {
-    status,
-    priority,
-    assignedTo,
-    search,
-    dueBefore,
-  } = {}) {
+  async countForProject(
+    projectId,
+    {
+      status,
+      priority,
+      assignedTo,
+      search,
+      dueBefore,
+    } = {},
+  ) {
     const conditions = [
       "t.project_id = ?",
       "t.deleted_at IS NULL",
     ];
+
     const values = [projectId];
 
     if (status !== undefined) {
@@ -197,7 +208,9 @@ class TaskRepository {
       }
     }
 
-    if (columns.length === 0) return false;
+    if (columns.length === 0) {
+      return false;
+    }
 
     columns.push(
       "t.updated_at = GREATEST(UTC_TIMESTAMP(3), t.updated_at + INTERVAL 1 MICROSECOND)",
@@ -211,7 +224,7 @@ class TaskRepository {
        SET ${columns.join(", ")}
        WHERE t.id = ?
          AND t.deleted_at IS NULL
-         AND p.archived = 0
+         AND p.is_archived = 0
          AND (t.created_by = ? OR t.assigned_to = ?)`,
       [...values, userId, userId],
     );
@@ -230,7 +243,7 @@ class TaskRepository {
            )
        WHERE t.id = ?
          AND t.deleted_at IS NULL
-         AND p.archived = 0`,
+         AND p.is_archived = 0`,
       [taskId],
     );
 
@@ -283,7 +296,7 @@ class TaskRepository {
        WHERE t.id = ?
          AND t.deleted_at IS NOT NULL
          AND t.deleted_at >= UTC_TIMESTAMP(3) - INTERVAL 30 DAY
-         AND p.archived = 0`,
+         AND p.is_archived = 0`,
       [taskId],
     );
 
@@ -296,8 +309,13 @@ function escapeLike(value) {
 }
 
 function toIso(value) {
-  if (value instanceof Date) return value.toISOString();
-  if (value === null || value === undefined) return null;
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  if (value === null || value === undefined) {
+    return null;
+  }
 
   const text = String(value).replace(" ", "T");
   const utcValue =

@@ -12,12 +12,15 @@ function createPoolMock({ rows = [], result = {} } = {}) {
     calls,
     async execute(sql, params = []) {
       calls.push({ sql, params });
+
       if (sql.includes("COUNT(*)")) {
         return [[{ total: "2" }]];
       }
+
       if (sql.trimStart().startsWith("SELECT")) {
         return [rows];
       }
+
       return [{
         affectedRows: result.affectedRows ?? 1,
         insertId: result.insertId ?? 42,
@@ -54,7 +57,10 @@ test("create uses parameterized SQL and derives task fields from arguments", asy
 
   assert.equal(id, "42");
   assert.match(pool.calls[0].sql, /INSERT INTO tasks/);
-  assert.match(pool.calls[0].sql, /WHERE p\.id = \? AND p\.archived = 0/);
+  assert.match(
+    pool.calls[0].sql,
+    /WHERE p\.id = \? AND p\.is_archived = 0/,
+  );
   assert.deepEqual(pool.calls[0].params, [
     "10", null, null, "Prepare report", null, "TODO", "MEDIUM", null, "7",
   ]);
@@ -107,7 +113,10 @@ test("listForProject scopes results and parameterizes filters", async () => {
   assert.match(call.sql, /t\.priority = \?/);
   assert.match(call.sql, /t\.assigned_to = \?/);
   assert.match(call.sql, /t\.title LIKE \?/);
-  assert.match(call.sql, /t\.due_date IS NOT NULL AND t\.due_date <= \?/);
+  assert.match(
+    call.sql,
+    /t\.due_date IS NOT NULL AND t\.due_date <= \?/,
+  );
   assert.deepEqual(call.params, [
     "7", "TODO", "HIGH", "20", "%report%", "2026-12-01", 20, 0,
   ]);
@@ -144,16 +153,23 @@ test("update only updates supported supplied fields", async () => {
   const pool = createPoolMock();
   const repository = new TaskRepository(pool);
 
-  const updated = await repository.update("42", {
-    title: "Updated report",
-    status: "IN_PROGRESS",
-  }, "20");
+  const updated = await repository.update(
+    "42",
+    {
+      title: "Updated report",
+      status: "IN_PROGRESS",
+    },
+    "20",
+  );
 
   assert.equal(updated, true);
   assert.match(pool.calls[0].sql, /INNER JOIN projects p/);
   assert.match(pool.calls[0].sql, /t\.deleted_at IS NULL/);
-  assert.match(pool.calls[0].sql, /p\.archived = 0/);
-  assert.match(pool.calls[0].sql, /t\.created_by = \? OR t\.assigned_to = \?/);
+  assert.match(pool.calls[0].sql, /p\.is_archived = 0/);
+  assert.match(
+    pool.calls[0].sql,
+    /t\.created_by = \? OR t\.assigned_to = \?/,
+  );
   assert.deepEqual(pool.calls[0].params, [
     "Updated report", "IN_PROGRESS", "42", "20", "20",
   ]);
@@ -173,7 +189,7 @@ test("softDelete only deletes active tasks in writable projects", async () => {
 
   assert.equal(await repository.softDelete("42"), true);
   assert.match(pool.calls[0].sql, /t\.deleted_at IS NULL/);
-  assert.match(pool.calls[0].sql, /p\.archived = 0/);
+  assert.match(pool.calls[0].sql, /p\.is_archived = 0/);
   assert.deepEqual(pool.calls[0].params, ["42"]);
 });
 
@@ -196,7 +212,7 @@ test("restore requires an unexpired deleted task and a writable project", async 
   assert.equal(await repository.restore("42"), true);
   assert.match(pool.calls[0].sql, /t\.deleted_at IS NOT NULL/);
   assert.match(pool.calls[0].sql, /INTERVAL 30 DAY/);
-  assert.match(pool.calls[0].sql, /p\.archived = 0/);
+  assert.match(pool.calls[0].sql, /p\.is_archived = 0/);
   assert.deepEqual(pool.calls[0].params, ["42"]);
 });
 

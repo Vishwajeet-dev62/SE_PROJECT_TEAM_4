@@ -1,3 +1,5 @@
+"use strict";
+
 class CommentRepository {
   constructor(pool) {
     this.pool = pool;
@@ -5,15 +7,17 @@ class CommentRepository {
 
   async listForTask(taskId, { limit, offset }) {
     const [rows] = await this.pool.execute(
-      `SELECT c.id, c.task_id, c.author_id, u.name AS author_name, c.body,
+      `SELECT c.id, c.task_id, c.user_id AS author_id,
+              u.name AS author_name, c.body,
               c.created_at, c.updated_at
        FROM comments c
-       INNER JOIN users u ON u.id = c.author_id
+       INNER JOIN users u ON u.id = c.user_id
        WHERE c.task_id = ?
        ORDER BY c.created_at ASC, c.id ASC
        LIMIT ? OFFSET ?`,
       [taskId, limit, offset],
     );
+
     return rows.map(mapComment);
   }
 
@@ -22,41 +26,56 @@ class CommentRepository {
       "SELECT COUNT(*) AS total FROM comments WHERE task_id = ?",
       [taskId],
     );
+
     return Number(rows[0].total);
   }
 
   async findById(commentId) {
     const [rows] = await this.pool.execute(
-      `SELECT c.id, c.task_id, c.author_id, u.name AS author_name, c.body,
-              c.created_at, c.updated_at, t.project_id, p.owner_id, p.archived
+      `SELECT c.id, c.task_id, c.user_id AS author_id,
+              u.name AS author_name, c.body,
+              c.created_at, c.updated_at,
+              t.project_id, p.owner_id,
+              p.is_archived AS archived
        FROM comments c
-       INNER JOIN users u ON u.id = c.author_id
+       INNER JOIN users u ON u.id = c.user_id
        INNER JOIN tasks t ON t.id = c.task_id
        INNER JOIN projects p ON p.id = t.project_id
-       WHERE c.id = ? AND t.deleted_at IS NULL`,
+       WHERE c.id = ?
+         AND t.deleted_at IS NULL
+         AND p.is_archived = 0`,
       [commentId],
     );
+
     if (rows.length === 0) {
       return null;
     }
+
     const row = rows[0];
+
     return {
       ...mapComment(row),
       projectId: String(row.project_id),
       ownerId: String(row.owner_id),
-      archived: row.archived === 1 || row.archived === true || row.archived === "1",
+      archived:
+        row.archived === 1 ||
+        row.archived === true ||
+        row.archived === "1",
     };
   }
 
   async create({ taskId, authorId, body }) {
     const [result] = await this.pool.execute(
-      `INSERT INTO comments (task_id, author_id, body)
+      `INSERT INTO comments (task_id, user_id, body)
        SELECT t.id, ?, ?
        FROM tasks t
        INNER JOIN projects p ON p.id = t.project_id
-       WHERE t.id = ? AND t.deleted_at IS NULL AND p.archived = 0`,
+       WHERE t.id = ?
+         AND t.deleted_at IS NULL
+         AND p.is_archived = 0`,
       [authorId, body, taskId],
     );
+
     return result.affectedRows === 0 ? null : String(result.insertId);
   }
 
@@ -66,21 +85,31 @@ class CommentRepository {
        INNER JOIN tasks t ON t.id = c.task_id
        INNER JOIN projects p ON p.id = t.project_id
        SET c.body = ?,
-           c.updated_at = GREATEST(UTC_TIMESTAMP(3), c.updated_at + INTERVAL 1 MICROSECOND)
-       WHERE c.id = ? AND t.deleted_at IS NULL AND p.archived = 0`,
+           c.updated_at = GREATEST(
+             UTC_TIMESTAMP(3),
+             c.updated_at + INTERVAL 1 MICROSECOND
+           )
+       WHERE c.id = ?
+         AND t.deleted_at IS NULL
+         AND p.is_archived = 0`,
       [body, commentId],
     );
+
     return result.affectedRows > 0;
   }
 
   async delete(commentId) {
     const [result] = await this.pool.execute(
-      `DELETE c FROM comments c
+      `DELETE c
+       FROM comments c
        INNER JOIN tasks t ON t.id = c.task_id
        INNER JOIN projects p ON p.id = t.project_id
-       WHERE c.id = ? AND t.deleted_at IS NULL AND p.archived = 0`,
+       WHERE c.id = ?
+         AND t.deleted_at IS NULL
+         AND p.is_archived = 0`,
       [commentId],
     );
+
     return result.affectedRows > 0;
   }
 }
@@ -101,13 +130,17 @@ function toIso(value) {
   if (value instanceof Date) {
     return value.toISOString();
   }
+
   if (value === null || value === undefined) {
     return null;
   }
+
   const text = String(value).replace(" ", "T");
-  const utcValue = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(text)
-    ? `${text}Z`
-    : text;
+  const utcValue =
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(text)
+      ? `${text}Z`
+      : text;
+
   return new Date(utcValue).toISOString();
 }
 
