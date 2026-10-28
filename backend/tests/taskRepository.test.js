@@ -54,7 +54,7 @@ test("create uses parameterized SQL and derives task fields from arguments", asy
 
   assert.equal(id, "42");
   assert.match(pool.calls[0].sql, /INSERT INTO tasks/);
-  assert.match(pool.calls[0].sql, /WHERE p\.id = \? AND p\.archived = 0/);
+  assert.match(pool.calls[0].sql, /WHERE p\.id = \? AND p\.is_archived = 0/);
   assert.deepEqual(pool.calls[0].params, [
     "10", null, null, "Prepare report", null, "TODO", "MEDIUM", null, "7",
   ]);
@@ -152,7 +152,7 @@ test("update only updates supported supplied fields", async () => {
   assert.equal(updated, true);
   assert.match(pool.calls[0].sql, /INNER JOIN projects p/);
   assert.match(pool.calls[0].sql, /t\.deleted_at IS NULL/);
-  assert.match(pool.calls[0].sql, /p\.archived = 0/);
+  assert.match(pool.calls[0].sql, /p\.is_archived = 0/);
   assert.deepEqual(pool.calls[0].params, [
     "Updated report", "IN_PROGRESS", "42",
   ]);
@@ -172,7 +172,7 @@ test("softDelete only deletes active tasks in writable projects", async () => {
 
   assert.equal(await repository.softDelete("42"), true);
   assert.match(pool.calls[0].sql, /t\.deleted_at IS NULL/);
-  assert.match(pool.calls[0].sql, /p\.archived = 0/);
+  assert.match(pool.calls[0].sql, /p\.is_archived = 0/);
   assert.deepEqual(pool.calls[0].params, ["42"]);
 });
 
@@ -195,7 +195,7 @@ test("restore requires an unexpired deleted task and a writable project", async 
   assert.equal(await repository.restore("42"), true);
   assert.match(pool.calls[0].sql, /t\.deleted_at IS NOT NULL/);
   assert.match(pool.calls[0].sql, /INTERVAL 30 DAY/);
-  assert.match(pool.calls[0].sql, /p\.archived = 0/);
+  assert.match(pool.calls[0].sql, /p\.is_archived = 0/);
   assert.deepEqual(pool.calls[0].params, ["42"]);
 });
 

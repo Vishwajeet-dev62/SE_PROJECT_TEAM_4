@@ -9,26 +9,30 @@ class ProjectRepository {
   async listVisible(user, { limit, offset }) {
     const query = user.role === "ADMIN"
       ? {
-        sql: `SELECT p.id, p.owner_id, p.name, p.description, p.archived,
-                     p.created_at, p.updated_at
-              FROM projects p
-              ORDER BY p.updated_at DESC, p.id DESC
-              LIMIT ? OFFSET ?`,
-        values: [limit, offset],
-      }
+          sql: `SELECT p.id, p.owner_id, p.name, p.description,
+                       p.is_archived AS archived,
+                       p.created_at, p.updated_at
+                FROM projects p
+                ORDER BY p.updated_at DESC, p.id DESC
+                LIMIT ? OFFSET ?`,
+          values: [limit, offset],
+        }
       : {
-        sql: `SELECT p.id, p.owner_id, p.name, p.description, p.archived,
-                     p.created_at, p.updated_at
-              FROM projects p
-              WHERE p.owner_id = ?
-                 OR EXISTS (
-                   SELECT 1 FROM project_members pm
-                   WHERE pm.project_id = p.id AND pm.user_id = ?
-                 )
-              ORDER BY p.updated_at DESC, p.id DESC
-              LIMIT ? OFFSET ?`,
-        values: [user.id, user.id, limit, offset],
-      };
+          sql: `SELECT p.id, p.owner_id, p.name, p.description,
+                       p.is_archived AS archived,
+                       p.created_at, p.updated_at
+                FROM projects p
+                WHERE p.owner_id = ?
+                   OR EXISTS (
+                     SELECT 1
+                     FROM project_members pm
+                     WHERE pm.project_id = p.id AND pm.user_id = ?
+                   )
+                ORDER BY p.updated_at DESC, p.id DESC
+                LIMIT ? OFFSET ?`,
+          values: [user.id, user.id, limit, offset],
+        };
+
     const [rows] = await this.pool.execute(query.sql, query.values);
     return rows.map(mapProject);
   }
@@ -36,56 +40,71 @@ class ProjectRepository {
   async countVisible(user) {
     const query = user.role === "ADMIN"
       ? {
-        sql: "SELECT COUNT(*) AS total FROM projects",
-        values: [],
-      }
+          sql: "SELECT COUNT(*) AS total FROM projects",
+          values: [],
+        }
       : {
-        sql: `SELECT COUNT(*) AS total
-              FROM projects p
-              WHERE p.owner_id = ?
-                 OR EXISTS (
-                   SELECT 1 FROM project_members pm
-                   WHERE pm.project_id = p.id AND pm.user_id = ?
-                 )`,
-        values: [user.id, user.id],
-      };
+          sql: `SELECT COUNT(*) AS total
+                FROM projects p
+                WHERE p.owner_id = ?
+                   OR EXISTS (
+                     SELECT 1
+                     FROM project_members pm
+                     WHERE pm.project_id = p.id AND pm.user_id = ?
+                   )`,
+          values: [user.id, user.id],
+        };
+
     const [rows] = await this.pool.execute(query.sql, query.values);
     return Number(rows[0].total);
   }
 
   async findById(projectId) {
     const [rows] = await this.pool.execute(
-      `SELECT id, owner_id, name, description, archived, created_at, updated_at
-       FROM projects WHERE id = ?`,
+      `SELECT id, owner_id, name, description,
+              is_archived AS archived,
+              created_at, updated_at
+       FROM projects
+       WHERE id = ?`,
       [projectId],
     );
+
     return rows.length === 0 ? null : mapProject(rows[0]);
   }
 
   async isMember(projectId, userId) {
     const [rows] = await this.pool.execute(
-      `SELECT 1 FROM project_members
-       WHERE project_id = ? AND user_id = ? LIMIT 1`,
+      `SELECT 1
+       FROM project_members
+       WHERE project_id = ? AND user_id = ?
+       LIMIT 1`,
       [projectId, userId],
     );
+
     return rows.length > 0;
   }
 
   async createProject({ ownerId, name, description }) {
     const connection = await this.pool.getConnection();
+
     try {
       await connection.beginTransaction();
+
       const [result] = await connection.execute(
         `INSERT INTO projects (owner_id, name, description)
          VALUES (?, ?, ?)`,
         [ownerId, name, description],
       );
+
       const projectId = String(result.insertId);
+
       await connection.execute(
-        `INSERT INTO project_members (project_id, user_id, member_role)
+        `INSERT INTO project_members
+           (project_id, user_id, project_role)
          VALUES (?, ?, 'OWNER')`,
         [projectId, ownerId],
       );
+
       await connection.commit();
       return this.findById(projectId);
     } catch (error) {
@@ -98,6 +117,7 @@ class ProjectRepository {
           { cause: error },
         );
       }
+
       throw error;
     } finally {
       connection.release();
@@ -107,32 +127,39 @@ class ProjectRepository {
   async updateProject(projectId, changes) {
     const columns = [];
     const values = [];
+
     if (Object.hasOwn(changes, "name")) {
       columns.push("name = ?");
       values.push(changes.name);
     }
+
     if (Object.hasOwn(changes, "description")) {
       columns.push("description = ?");
       values.push(changes.description);
     }
+
     columns.push("updated_at = UTC_TIMESTAMP(3)");
     values.push(projectId);
 
     const [result] = await this.pool.execute(
-      `UPDATE projects SET ${columns.join(", ")}
-       WHERE id = ? AND archived = 0`,
+      `UPDATE projects
+       SET ${columns.join(", ")}
+       WHERE id = ? AND is_archived = 0`,
       values,
     );
+
     return result.affectedRows > 0;
   }
 
   async archiveProject(projectId) {
     const [result] = await this.pool.execute(
       `UPDATE projects
-       SET archived = 1, updated_at = UTC_TIMESTAMP(3)
-       WHERE id = ? AND archived = 0`,
+       SET is_archived = 1,
+           updated_at = UTC_TIMESTAMP(3)
+       WHERE id = ? AND is_archived = 0`,
       [projectId],
     );
+
     return result.affectedRows > 0;
   }
 
@@ -141,20 +168,24 @@ class ProjectRepository {
       "SELECT 1 FROM users WHERE id = ? LIMIT 1",
       [userId],
     );
+
     return rows.length > 0;
   }
 
   async listMembers(projectId, { limit, offset }) {
     const [rows] = await this.pool.execute(
-      `SELECT u.id, u.name, pm.member_role, pm.joined_at
+      `SELECT u.id, u.name,
+              pm.project_role AS member_role,
+              pm.joined_at
        FROM project_members pm
        INNER JOIN users u ON u.id = pm.user_id
        WHERE pm.project_id = ?
-       ORDER BY CASE WHEN pm.member_role = 'OWNER' THEN 0 ELSE 1 END,
+       ORDER BY CASE WHEN pm.project_role = 'OWNER' THEN 0 ELSE 1 END,
                 u.name ASC, u.id ASC
        LIMIT ? OFFSET ?`,
       [projectId, limit, offset],
     );
+
     return rows.map((row) => ({
       id: String(row.id),
       name: row.name,
@@ -168,28 +199,34 @@ class ProjectRepository {
       "SELECT COUNT(*) AS total FROM project_members WHERE project_id = ?",
       [projectId],
     );
+
     return Number(rows[0].total);
   }
 
   async addMember(projectId, userId) {
     const [result] = await this.pool.execute(
-      `INSERT INTO project_members (project_id, user_id, member_role)
+      `INSERT INTO project_members (project_id, user_id, project_role)
        SELECT p.id, ?, 'MEMBER'
        FROM projects p
-       WHERE p.id = ? AND p.archived = 0`,
+       WHERE p.id = ? AND p.is_archived = 0`,
       [userId, projectId],
     );
+
     return result.affectedRows > 0;
   }
 
   async removeMember(projectId, userId) {
     const [result] = await this.pool.execute(
-      `DELETE pm FROM project_members pm
+      `DELETE pm
+       FROM project_members pm
        INNER JOIN projects p ON p.id = pm.project_id
-       WHERE p.id = ? AND p.archived = 0
-         AND pm.user_id = ? AND pm.member_role <> 'OWNER'`,
+       WHERE p.id = ?
+         AND p.is_archived = 0
+         AND pm.user_id = ?
+         AND pm.project_role <> 'OWNER'`,
       [projectId, userId],
     );
+
     return result.affectedRows > 0;
   }
 
@@ -203,15 +240,18 @@ class ProjectRepository {
        LIMIT ? OFFSET ?`,
       [projectId, limit, offset],
     );
+
     return rows.map(mapTask);
   }
 
   async countActiveTasks(projectId) {
     const [rows] = await this.pool.execute(
-      `SELECT COUNT(*) AS total FROM tasks
+      `SELECT COUNT(*) AS total
+       FROM tasks
        WHERE project_id = ? AND deleted_at IS NULL`,
       [projectId],
     );
+
     return Number(rows[0].total);
   }
 
@@ -232,7 +272,9 @@ class ProjectRepository {
        WHERE project_id = ? AND deleted_at IS NULL`,
       [projectId],
     );
+
     const row = rows[0];
+
     return {
       TODO: Number(row.todo || 0),
       IN_PROGRESS: Number(row.in_progress || 0),
@@ -250,10 +292,15 @@ class ProjectRepository {
        WHERE t.id = ? AND t.deleted_at IS NULL`,
       [taskId],
     );
+
     if (rows.length === 0) {
       return null;
     }
-    return { id: String(rows[0].id), projectId: String(rows[0].project_id) };
+
+    return {
+      id: String(rows[0].id),
+      projectId: String(rows[0].project_id),
+    };
   }
 }
 
@@ -263,7 +310,10 @@ function mapProject(row) {
     ownerId: String(row.owner_id),
     name: row.name,
     description: row.description,
-    archived: row.archived === 1 || row.archived === true || row.archived === "1",
+    archived:
+      row.archived === 1 ||
+      row.archived === true ||
+      row.archived === "1",
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
   };
@@ -290,13 +340,17 @@ function toIso(value) {
   if (value instanceof Date) {
     return value.toISOString();
   }
+
   if (value === null || value === undefined) {
     return null;
   }
+
   const text = String(value).replace(" ", "T");
-  const utcValue = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(text)
-    ? `${text}Z`
-    : text;
+  const utcValue =
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(text)
+      ? `${text}Z`
+      : text;
+
   return new Date(utcValue).toISOString();
 }
 
