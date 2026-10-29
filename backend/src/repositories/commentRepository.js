@@ -1,3 +1,4 @@
+
 "use strict";
 
 class CommentRepository {
@@ -7,11 +8,16 @@ class CommentRepository {
 
   async listForTask(taskId, { limit, offset }) {
     const [rows] = await this.pool.execute(
-      `SELECT c.id, c.task_id, c.user_id AS author_id,
-              u.name AS author_name, c.body,
-              c.created_at, c.updated_at
+      `SELECT
+         c.id,
+         c.task_id,
+         c.author_id,
+         u.name AS author_name,
+         c.body,
+         c.created_at,
+         c.updated_at
        FROM comments c
-       INNER JOIN users u ON u.id = c.user_id
+       INNER JOIN users u ON u.id = c.author_id
        WHERE c.task_id = ?
        ORDER BY c.created_at ASC, c.id ASC
        LIMIT ? OFFSET ?`,
@@ -32,13 +38,19 @@ class CommentRepository {
 
   async findById(commentId) {
     const [rows] = await this.pool.execute(
-      `SELECT c.id, c.task_id, c.user_id AS author_id,
-              u.name AS author_name, c.body,
-              c.created_at, c.updated_at,
-              t.project_id, p.owner_id,
-              p.is_archived AS archived
+      `SELECT
+         c.id,
+         c.task_id,
+         c.author_id,
+         u.name AS author_name,
+         c.body,
+         c.created_at,
+         c.updated_at,
+         t.project_id,
+         p.owner_id,
+         p.is_archived AS archived
        FROM comments c
-       INNER JOIN users u ON u.id = c.user_id
+       INNER JOIN users u ON u.id = c.author_id
        INNER JOIN tasks t ON t.id = c.task_id
        INNER JOIN projects p ON p.id = t.project_id
        WHERE c.id = ?
@@ -66,7 +78,7 @@ class CommentRepository {
 
   async create({ taskId, authorId, body }) {
     const [result] = await this.pool.execute(
-      `INSERT INTO comments (task_id, user_id, body)
+      `INSERT INTO comments (task_id, author_id, body)
        SELECT t.id, ?, ?
        FROM tasks t
        INNER JOIN projects p ON p.id = t.project_id
@@ -76,7 +88,9 @@ class CommentRepository {
       [authorId, body, taskId],
     );
 
-    return result.affectedRows === 0 ? null : String(result.insertId);
+    return result.affectedRows === 0
+      ? null
+      : String(result.insertId);
   }
 
   async update(commentId, body) {
@@ -136,6 +150,7 @@ function toIso(value) {
   }
 
   const text = String(value).replace(" ", "T");
+
   const utcValue =
     /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(text)
       ? `${text}Z`
