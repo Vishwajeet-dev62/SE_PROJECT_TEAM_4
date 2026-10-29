@@ -23,6 +23,7 @@ const MIGRATIONS = [
   "008_revoked_tokens.sql",
   "009_align_schema_column_names.sql",
   "010_align_project_member_column_name.sql",
+  "011_add_project_to_audit_logs.sql",
 ];
 const APPLICATION_TABLES = [
   "users",
@@ -309,6 +310,55 @@ async function runApiChecks(pool, config, fixture) {
       [assigned.id],
     );
     assert.equal(persistedTask[0].status, "IN_PROGRESS");
+        // Activity History: verify task events are persisted and access is scoped.
+    const activityResponse = await request(
+      `/projects/${primary.id}/activity?page=1&limit=20`,
+      {
+        token: tokens.member,
+        status: 200,
+      },
+    );
+
+    assert.ok(Array.isArray(activityResponse.data));
+
+    const createdEvent = activityResponse.data.find(
+      (event) =>
+        event.eventType === "TASK_CREATED" &&
+        event.details?.title === `M2 live assigned ${fixture.runId}`,
+    );
+
+    assert.ok(createdEvent, "Task creation activity should be recorded");
+    assert.equal(createdEvent.projectId, String(primary.id));
+    assert.equal(createdEvent.userId, String(users.owner.id));
+
+    const updatedEvent = activityResponse.data.find(
+      (event) =>
+        event.eventType === "TASK_UPDATED" &&
+        event.details?.taskId === String(assigned.id) &&
+        event.details?.changedFields?.includes("status"),
+    );
+
+    assert.ok(
+      updatedEvent,
+      "The assigned task status update should be recorded",
+    );
+    await request(`/projects/${primary.id}/activity`, {
+      token: tokens.outsider,
+      status: 403,
+    });
+
+    const [persistedActivity] = await pool.execute(
+      `SELECT event_type, project_id
+       FROM audit_logs
+       WHERE project_id = ?
+         AND event_type = 'TASK_CREATED'`,
+      [primary.id],
+    );
+
+    assert.ok(
+      persistedActivity.length >= 3,
+      "Task creation events should be persisted in audit_logs",
+    );
 
     const board = await request(`/projects/${primary.id}/board?page=1&limit=20`, {
       token: tokens.member,
@@ -498,6 +548,7 @@ async function runApiChecks(pool, config, fixture) {
         "task status persistence, Kanban grouping, dashboard calculations",
         "comment CRUD, validation, pagination, permissions, foreign key enforcement",
         "archive idempotency and archived write restrictions",
+        "Activity History persistence, task events, and project access control",
       ],
     };
   } finally {
@@ -533,6 +584,12 @@ async function cleanupFixture(pool, fixture) {
        WHERE t.project_id IN (${placeholders})`,
       projectIds,
     );
+
+    await pool.execute(
+      `DELETE FROM audit_logs WHERE project_id IN (${placeholders})`,
+      projectIds,
+    );
+
     await pool.execute(
       `DELETE FROM tasks WHERE project_id IN (${placeholders})`,
       projectIds,

@@ -24,6 +24,7 @@ test("Member 2 migrations have stable order and explicit external dependencies",
     "008_revoked_tokens.sql",
     "009_align_schema_column_names.sql",
     "010_align_project_member_column_name.sql",
+    "011_add_project_to_audit_logs.sql",
   ]);
 
   assert.equal(MIGRATION_DEPENDENCIES["001_users.sql"], undefined);
@@ -53,6 +54,10 @@ test("Member 2 migrations have stable order and explicit external dependencies",
   MIGRATION_DEPENDENCIES["010_align_project_member_column_name.sql"],
   ["project_members"],
   );
+  assert.deepEqual(
+  MIGRATION_DEPENDENCIES["011_add_project_to_audit_logs.sql"],
+  ["users", "projects"],
+  );
 });
 
 test("migration 009 renames the projects archive column", () => {
@@ -63,6 +68,20 @@ test("migration 009 renames the projects archive column", () => {
 test("migration 010 renames the project membership role column", () => {
   const migration = readMigration("010_align_project_member_column_name.sql");
   assert.match(migration, /RENAME COLUMN member_role TO project_role/);
+});
+
+test("migration 011 associates audit logs with projects", () => {
+  const migration = readMigration("011_add_project_to_audit_logs.sql");
+
+  assert.match(migration, /ADD COLUMN project_id BIGINT UNSIGNED NULL/);
+  assert.match(
+    migration,
+    /FOREIGN KEY \(project_id\) REFERENCES projects \(id\)/,
+  );
+  assert.match(
+    migration,
+    /idx_audit_logs_project_created \(project_id, created_at, id\)/,
+  );
 });
 
 test("project, membership, and comment schemas use InnoDB and contract keys", () => {

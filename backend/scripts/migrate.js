@@ -13,6 +13,7 @@ const MIGRATION_DEPENDENCIES = {
   "008_revoked_tokens.sql": ["users"],
   "009_align_schema_column_names.sql": ["projects"],
   "010_align_project_member_column_name.sql": ["project_members"],
+  "011_add_project_to_audit_logs.sql": ["users", "projects"],
 };
 
 async function tableExists(connection, tableName) {

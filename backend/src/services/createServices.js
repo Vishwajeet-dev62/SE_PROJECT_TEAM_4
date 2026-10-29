@@ -5,17 +5,29 @@ const { CommentRepository } = require("../repositories/commentRepository");
 const { ProjectRepository } = require("../repositories/projectRepository");
 const { TaskRepository } = require("../repositories/taskRepository");
 const { UserRepository } = require("../repositories/userRepository");
-const { TokenRevocationRepository } = require("../repositories/tokenRevocationRepository");
+const {
+  TokenRevocationRepository,
+} = require("../repositories/tokenRevocationRepository");
+const {
+  ActivityRepository,
+} = require("../repositories/activityRepository");
 
 const { CommentService } = require("./commentService");
 const { ProjectService } = require("./projectService");
 const { TaskService } = require("./taskService");
 const { AuthService } = require("./authService");
+const { ActivityService } = require("./activityService");
 const { createRequireAuth } = require("../middleware/requireAuth");
 
 function createServices(pool, authConfig = {}) {
   const projectRepository = new ProjectRepository(pool);
   const projectService = new ProjectService(projectRepository);
+
+  const activityRepository = new ActivityRepository(pool);
+  const activityService = new ActivityService({
+    activityRepository,
+    projectService,
+  });
 
   const commentRepository = new CommentRepository(pool);
   const commentService = new CommentService({
@@ -28,6 +40,7 @@ function createServices(pool, authConfig = {}) {
     taskRepository,
     projectService,
     projectRepository,
+    activityService,
   });
 
   const userRepository = new UserRepository(pool);
@@ -48,6 +61,7 @@ function createServices(pool, authConfig = {}) {
 
   return {
     projectService,
+    activityService,
     commentService,
     taskService,
     authService,
