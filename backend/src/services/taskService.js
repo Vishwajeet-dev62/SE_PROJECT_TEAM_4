@@ -13,15 +13,24 @@ const {
 } = require("../validators/taskValidators");
 
 class TaskService {
-  constructor({ taskRepository, projectService, projectRepository }) {
+  constructor({
+    taskRepository,
+    projectService,
+    projectRepository,
+    activityService,
+  }) {
     this.taskRepository = taskRepository;
     this.projectService = projectService;
     this.projectRepository = projectRepository;
+    this.activityService = activityService;
   }
 
   async list(projectIdInput, userInput, query = {}) {
     const user = requireUser(userInput);
-    const project = await this.projectService.getProject(projectIdInput, user);
+    const project = await this.projectService.getProject(
+      projectIdInput,
+      user,
+    );
     const pagination = parsePagination(query);
 
     if (!pagination) {
@@ -29,6 +38,7 @@ class TaskService {
     }
 
     const filters = this.parseFilters(query);
+
     const [tasks, total] = await Promise.all([
       this.taskRepository.listForProject(project.id, {
         ...pagination,
@@ -52,18 +62,26 @@ class TaskService {
     );
     const fullTask = await this.taskRepository.findById(task.id);
 
-    if (!fullTask) throw notFound();
+    if (!fullTask) {
+      throw notFound();
+    }
 
     return this.withPermissions(fullTask, user, project);
   }
 
   async create(projectIdInput, body, userInput) {
     const user = requireUser(userInput);
-    const project = await this.projectService.getProject(projectIdInput, user);
+    const project = await this.projectService.getProject(
+      projectIdInput,
+      user,
+    );
     this.projectService.assertWritable(project);
 
     const { input, errors } = validateTaskBody(body);
-    if (errors.length) throw validationError("Task input is invalid", errors);
+
+    if (errors.length) {
+      throw validationError("Task input is invalid", errors);
+    }
 
     await this.validateAssignee(input.assigned_to, project);
 
@@ -81,6 +99,7 @@ class TaskService {
 
     if (!taskId) {
       await this.projectService.getProject(project.id, user);
+
       throw new ApiError(
         409,
         "PROJECT_NOT_WRITABLE",
@@ -88,18 +107,39 @@ class TaskService {
       );
     }
 
-    return this.get(taskId, user);
+    const createdTask = await this.get(taskId, user);
+
+    await this.recordActivity({
+      projectId: project.id,
+      userId: user.id,
+      eventType: "TASK_CREATED",
+      details: {
+        taskId: createdTask.id,
+        title: createdTask.title,
+      },
+    });
+
+    return createdTask;
   }
 
   async update(taskIdInput, body, userInput) {
     const user = requireUser(userInput);
-    const { task: authorizedTask, project } = await this.projectService.authorizeTask(
+
+    const {
+      task: authorizedTask,
+      project,
+    } = await this.projectService.authorizeTask(
       taskIdInput,
       user,
       { write: true },
     );
+
     const task = await this.taskRepository.findById(authorizedTask.id);
-    if (!task) throw notFound();
+
+    if (!task) {
+      throw notFound();
+    }
+
     if (!canEditTask(task, user)) {
       throw new ApiError(
         403,
@@ -108,32 +148,63 @@ class TaskService {
       );
     }
 
-    const { input, errors } = validateTaskBody(body, { partial: true });
-    if (errors.length) throw validationError("Task input is invalid", errors);
+    const { input, errors } = validateTaskBody(body, {
+      partial: true,
+    });
+
+    if (errors.length) {
+      throw validationError("Task input is invalid", errors);
+    }
 
     if (Object.hasOwn(input, "assigned_to")) {
       await this.validateAssignee(input.assigned_to, project);
     }
 
     const changes = { ...input };
+
     if (typeof changes.title === "string") {
       changes.title = changes.title.trim();
     }
-    if (changes.due_date === "") changes.due_date = null;
 
-    const updated = await this.taskRepository.update(task.id, changes, user.id);
+    if (changes.due_date === "") {
+      changes.due_date = null;
+    }
+
+    const updated = await this.taskRepository.update(
+      task.id,
+      changes,
+      user.id,
+    );
 
     if (!updated) {
-      await this.projectService.authorizeTask(task.id, user, { write: true });
+      await this.projectService.authorizeTask(
+        task.id,
+        user,
+        { write: true },
+      );
+
       throw notFound();
     }
 
-    return this.get(task.id, user);
+    const updatedTask = await this.get(task.id, user);
+
+    await this.recordActivity({
+      projectId: project.id,
+      userId: user.id,
+      eventType: "TASK_UPDATED",
+      details: {
+        taskId: updatedTask.id,
+        changedFields: Object.keys(changes),
+      },
+    });
+
+    return updatedTask;
   }
 
   async delete(taskIdInput, userInput) {
     const user = requireUser(userInput);
-    const { task } = await this.projectService.authorizeTask(
+
+    const { task, project } = await this.projectService.authorizeTask(
       taskIdInput,
       user,
       { write: true },
@@ -142,14 +213,31 @@ class TaskService {
     const deleted = await this.taskRepository.softDelete(task.id);
 
     if (!deleted) {
-      await this.projectService.authorizeTask(task.id, user, { write: true });
+      await this.projectService.authorizeTask(
+        task.id,
+        user,
+        { write: true },
+      );
+
       throw notFound();
     }
+
+    await this.recordActivity({
+      projectId: project.id,
+      userId: user.id,
+      eventType: "TASK_DELETED",
+      details: {
+        taskId: task.id,
+      },
+    });
   }
 
   async listTrash(projectIdInput, userInput, query = {}) {
     const user = requireUser(userInput);
-    const project = await this.projectService.getProject(projectIdInput, user);
+    const project = await this.projectService.getProject(
+      projectIdInput,
+      user,
+    );
     const pagination = parsePagination(query);
 
     if (!pagination) {
@@ -157,7 +245,10 @@ class TaskService {
     }
 
     const [tasks, total] = await Promise.all([
-      this.taskRepository.listTrashForProject(project.id, pagination),
+      this.taskRepository.listTrashForProject(
+        project.id,
+        pagination,
+      ),
       this.taskRepository.countTrashForProject(project.id),
     ]);
 
@@ -172,15 +263,20 @@ class TaskService {
     const user = requireUser(userInput);
     const taskId = parseId(taskIdInput, "taskId");
 
-    // Trash items are not returned by authorizeTask because that method
-    // intentionally authorizes only active tasks.
+    // Trash items are not returned by authorizeTask because it only
+    // authorizes active tasks.
     const task = await this.taskRepository.findById(taskId, {
       includeDeleted: true,
     });
 
-    if (!task || !task.deletedAt) throw notFound();
+    if (!task || !task.deletedAt) {
+      throw notFound();
+    }
 
-    const project = await this.projectService.getProject(task.projectId, user);
+    const project = await this.projectService.getProject(
+      task.projectId,
+      user,
+    );
     this.projectService.assertWritable(project);
 
     const restored = await this.taskRepository.restore(task.id);
@@ -193,7 +289,33 @@ class TaskService {
       );
     }
 
-    return this.get(task.id, user);
+    const restoredTask = await this.get(task.id, user);
+
+    await this.recordActivity({
+      projectId: project.id,
+      userId: user.id,
+      eventType: "TASK_RESTORED",
+      details: {
+        taskId: restoredTask.id,
+        title: restoredTask.title,
+      },
+    });
+
+    return restoredTask;
+  }
+
+  async recordActivity(event) {
+    if (!this.activityService) {
+      return;
+    }
+
+    try {
+      await this.activityService.record(event);
+    } catch (error) {
+      // Activity history is best-effort and must not turn a successful
+      // task operation into a failed API request.
+      console.error("Failed to record task activity", error);
+    }
   }
 
   parseFilters(query) {
@@ -203,6 +325,7 @@ class TaskService {
       if (!ALLOWED_STATUSES.has(query.status)) {
         throw validationError("Invalid task status filter");
       }
+
       filters.status = query.status;
     }
 
@@ -210,19 +333,28 @@ class TaskService {
       if (!ALLOWED_PRIORITIES.has(query.priority)) {
         throw validationError("Invalid task priority filter");
       }
+
       filters.priority = query.priority;
     }
 
     if (query.assignedTo !== undefined && query.assignedTo !== "") {
       const id = parsePositiveInteger(query.assignedTo, null);
-      if (id === null) throw validationError("Invalid assignedTo filter");
+
+      if (id === null) {
+        throw validationError("Invalid assignedTo filter");
+      }
+
       filters.assignedTo = String(id);
     }
 
     if (query.search !== undefined && query.search !== "") {
-      if (typeof query.search !== "string" || query.search.length > 100) {
+      if (
+        typeof query.search !== "string" ||
+        query.search.length > 100
+      ) {
         throw validationError("Search must be at most 100 characters");
       }
+
       filters.search = query.search.trim();
     }
 
@@ -231,9 +363,11 @@ class TaskService {
         title: "Filter",
         due_date: query.dueBefore,
       });
+
       if (errors.some((error) => error.field === "due_date")) {
         throw validationError("Invalid dueBefore filter");
       }
+
       filters.dueBefore = query.dueBefore;
     }
 
@@ -241,13 +375,19 @@ class TaskService {
   }
 
   async validateAssignee(assigneeId, project) {
-    if (assigneeId === undefined || assigneeId === null) return;
+    if (assigneeId === undefined || assigneeId === null) {
+      return;
+    }
 
     const id = parseId(assigneeId, "assigned_to");
     const userExists = await this.projectRepository.userExists(id);
 
     if (!userExists) {
-      throw new ApiError(404, "USER_NOT_FOUND", "Assigned user not found");
+      throw new ApiError(
+        404,
+        "USER_NOT_FOUND",
+        "Assigned user not found",
+      );
     }
 
     if (
@@ -284,7 +424,9 @@ function validationError(message, errors) {
     "VALIDATION_ERROR",
     message,
     errors
-      ? Object.fromEntries(errors.map((error) => [error.field, error.message]))
+      ? Object.fromEntries(
+          errors.map((error) => [error.field, error.message]),
+        )
       : undefined,
   );
 }
