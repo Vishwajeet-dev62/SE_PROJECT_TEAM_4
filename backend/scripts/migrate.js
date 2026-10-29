@@ -11,6 +11,8 @@ const MIGRATION_DEPENDENCIES = {
   "006_audit_logs.sql": ["users"],
   "007_password_reset_tokens.sql": ["users"],
   "008_revoked_tokens.sql": ["users"],
+  "009_align_schema_column_names.sql": ["projects"],
+  "010_align_project_member_column_name.sql": ["project_members"],
 };
 
 async function tableExists(connection, tableName) {

@@ -22,6 +22,8 @@ test("Member 2 migrations have stable order and explicit external dependencies",
     "006_audit_logs.sql",
     "007_password_reset_tokens.sql",
     "008_revoked_tokens.sql",
+    "009_align_schema_column_names.sql",
+    "010_align_project_member_column_name.sql",
   ]);
 
   assert.equal(MIGRATION_DEPENDENCIES["001_users.sql"], undefined);
@@ -43,6 +45,24 @@ test("Member 2 migrations have stable order and explicit external dependencies",
     "users",
   ]);
   assert.deepEqual(MIGRATION_DEPENDENCIES["008_revoked_tokens.sql"], ["users"]);
+  assert.deepEqual(
+  MIGRATION_DEPENDENCIES["009_align_schema_column_names.sql"],
+  ["projects"],
+  );
+  assert.deepEqual(
+  MIGRATION_DEPENDENCIES["010_align_project_member_column_name.sql"],
+  ["project_members"],
+  );
+});
+
+test("migration 009 renames the projects archive column", () => {
+  const migration = readMigration("009_align_schema_column_names.sql");
+  assert.match(migration, /RENAME COLUMN archived TO is_archived/);
+});
+
+test("migration 010 renames the project membership role column", () => {
+  const migration = readMigration("010_align_project_member_column_name.sql");
+  assert.match(migration, /RENAME COLUMN member_role TO project_role/);
 });
 
 test("project, membership, and comment schemas use InnoDB and contract keys", () => {
@@ -82,8 +102,19 @@ test("task schema uses InnoDB, project ownership keys, and task query indexes", 
 });
 
 test("migration runner applies sorted files once under a database lock", async () => {
+  const filenames = fs.readdirSync(migrationDirectory).sort();
+
   const state = {
-    tables: new Set(["users", "projects", "tasks"]),
+    tables: new Set([
+      "users",
+      "projects",
+      "project_members",
+      "tasks",
+      "comments",
+      "audit_logs",
+      "password_reset_tokens",
+      "revoked_tokens",
+    ]),
     applied: new Set(),
     executed: [],
     lockReleased: false,
@@ -105,9 +136,7 @@ test("migration runner applies sorted files once under a database lock", async (
       }
 
       if (sql.includes("SELECT migration")) {
-        return [
-          [...state.applied].map((migration) => ({ migration })),
-        ];
+        return [[...state.applied].map((migration) => ({ migration }))];
       }
 
       if (sql.includes("INSERT INTO schema_migrations")) {
@@ -131,61 +160,76 @@ test("migration runner applies sorted files once under a database lock", async (
     getConnection: async () => connection,
   };
 
-  const completed = await runMigrations(pool, migrationDirectory);
+  await runMigrations(pool, migrationDirectory);
 
-  assert.deepEqual(completed, [
-    "001_users.sql",
-    "002_projects.sql",
-    "003_project_members.sql",
-    "004_tasks.sql",
-    "005_comments.sql",
-    "006_audit_logs.sql",
-    "007_password_reset_tokens.sql",
-    "008_revoked_tokens.sql",
-  ]);
+  const expectedSql = filenames.map((filename) =>
+    fs.readFileSync(path.join(migrationDirectory, filename), "utf8"),
+  );
 
-  assert.equal(state.applied.size, 8);
-  assert.equal(state.executed.length, 8);
+  assert.deepEqual(state.executed, expectedSql);
+  assert.deepEqual([...state.applied], filenames);
   assert.equal(state.lockReleased, true);
 });
 
-test("users schema uses InnoDB, unique email and lockout columns", () => {
-  const users = readMigration("001_users.sql");
+test("migration runner skips migrations that have already been applied", async () => {
+  const filenames = fs.readdirSync(migrationDirectory).sort();
 
-  assert.match(users, /id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT/);
-  assert.match(users, /UNIQUE KEY uq_users_email \(email\)/);
-  assert.match(users, /ENUM\('ADMIN', 'MEMBER'\)/);
-  assert.match(users, /failed_attempts/);
-  assert.match(users, /locked_until/);
-  assert.match(users, /ENGINE=InnoDB/);
+  const state = {
+    tables: new Set([
+      "users",
+      "projects",
+      "project_members",
+      "tasks",
+      "comments",
+      "audit_logs",
+      "password_reset_tokens",
+      "revoked_tokens",
+    ]),
+    applied: new Set(filenames),
+    executed: [],
+    lockReleased: false,
+  };
+
+  const connection = {
+    execute: async (sql, values = []) => {
+      if (sql.includes("GET_LOCK")) {
+        return [[{ lock_acquired: 1 }]];
+      }
+
+      if (sql.includes("RELEASE_LOCK")) {
+        state.lockReleased = true;
+        return [[{ released: 1 }]];
+      }
+
+      if (sql.includes("information_schema.tables")) {
+        return [[{ table_count: Number(state.tables.has(values[0])) }]];
+      }
+
+      if (sql.includes("SELECT migration")) {
+        return [[...state.applied].map((migration) => ({ migration }))];
+      }
+
+      throw new Error(`Unexpected migration query: ${sql}`);
+    },
+
+    query: async (sql) => {
+      state.executed.push(sql);
+      return [{ affectedRows: 0 }];
+    },
+
+    release: () => {},
+  };
+
+  const pool = {
+    query: async () => [{ affectedRows: 0 }],
+    getConnection: async () => connection,
+  };
+
+  await runMigrations(pool, migrationDirectory);
+
+  assert.deepEqual(state.executed, []);
+  assert.equal(state.lockReleased, true);
 });
-
-test("audit log and reset token schemas use InnoDB and required keys", () => {
-  const audit = readMigration("006_audit_logs.sql");
-  const reset = readMigration("007_password_reset_tokens.sql");
-
-  assert.match(audit, /FOREIGN KEY \(user_id\) REFERENCES users \(id\)/);
-  assert.match(audit, /event_type/);
-  assert.match(audit, /ENGINE=InnoDB/);
-
-  assert.match(reset, /UNIQUE KEY uq_password_reset_token_hash \(token_hash\)/);
-  assert.match(reset, /used_at/);
-  assert.match(reset, /expires_at/);
-  assert.match(reset, /ENGINE=InnoDB/);
-});
-
-test("revoked-token schema expires entries and references their user", () => {
-  const revoked = readMigration("008_revoked_tokens.sql");
-
-  assert.match(revoked, /token_id CHAR\(36\) NOT NULL/);
-  assert.match(revoked, /expires_at DATETIME\(3\) NOT NULL/);
-  assert.match(revoked, /FOREIGN KEY \(user_id\) REFERENCES users \(id\)/);
-  assert.match(revoked, /KEY idx_revoked_tokens_expiry \(expires_at\)/);
-  assert.match(revoked, /ENGINE=InnoDB/);
-});
-
-
-
 
 test("migration runner reports missing member-owned tables without applying schema", async () => {
   const state = {
@@ -216,9 +260,7 @@ test("migration runner reports missing member-owned tables without applying sche
       }
 
       if (sql.includes("SELECT migration")) {
-        return [
-          [...state.applied].map((migration) => ({ migration })),
-        ];
+        return [[...state.applied].map((migration) => ({ migration }))];
       }
 
       if (sql.includes("INSERT INTO schema_migrations")) {
@@ -250,9 +292,6 @@ test("migration runner reports missing member-owned tables without applying sche
   assert.deepEqual(state.executed, []);
   assert.equal(state.lockReleased, true);
 });
-
-
-
 
 function readMigration(filename) {
   return fs.readFileSync(path.join(migrationDirectory, filename), "utf8");

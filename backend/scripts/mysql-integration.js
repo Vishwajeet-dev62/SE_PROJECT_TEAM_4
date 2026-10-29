@@ -21,6 +21,8 @@ const MIGRATIONS = [
   "006_audit_logs.sql",
   "007_password_reset_tokens.sql",
   "008_revoked_tokens.sql",
+  "009_align_schema_column_names.sql",
+  "010_align_project_member_column_name.sql",
 ];
 const APPLICATION_TABLES = [
   "users",
