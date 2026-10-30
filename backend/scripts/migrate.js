@@ -14,6 +14,7 @@ const MIGRATION_DEPENDENCIES = {
   "009_align_schema_column_names.sql": ["projects"],
   "010_align_project_member_column_name.sql": ["project_members"],
   "011_add_project_to_audit_logs.sql": ["users", "projects"],
+  "012_create_notifications.sql": ["users"],
 };
 
 async function tableExists(connection, tableName) {
