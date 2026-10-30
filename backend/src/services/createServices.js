@@ -19,6 +19,9 @@ const { AuthService } = require("./authService");
 const { ActivityService } = require("./activityService");
 const { createRequireAuth } = require("../middleware/requireAuth");
 
+const { NotificationRepository } = require("../repositories/notificationRepository");
+const { NotificationService } = require("./notificationService");
+
 function createServices(pool, authConfig = {}) {
   const projectRepository = new ProjectRepository(pool);
   const projectService = new ProjectService(projectRepository);
@@ -28,6 +31,11 @@ function createServices(pool, authConfig = {}) {
     activityRepository,
     projectService,
   });
+
+  const notificationRepository = new NotificationRepository(pool);
+  const notificationService = new NotificationService({
+    notificationRepository,
+});
 
   const commentRepository = new CommentRepository(pool);
   const commentService = new CommentService({
@@ -66,6 +74,7 @@ function createServices(pool, authConfig = {}) {
     taskService,
     authService,
     requireAuth,
+    notificationService,
   };
 }
 

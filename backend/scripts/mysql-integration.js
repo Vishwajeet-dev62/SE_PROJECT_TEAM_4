@@ -12,6 +12,7 @@ const { createApp } = require("../src/app");
 const { createServices } = require("../src/services/createServices");
 
 const REQUIRED_OPT_IN = "M2_MYSQL_INTEGRATION=1";
+
 const MIGRATIONS = [
   "001_users.sql",
   "002_projects.sql",
@@ -24,7 +25,9 @@ const MIGRATIONS = [
   "009_align_schema_column_names.sql",
   "010_align_project_member_column_name.sql",
   "011_add_project_to_audit_logs.sql",
+  "012_create_notifications.sql",
 ];
+
 const APPLICATION_TABLES = [
   "users",
   "projects",
@@ -34,6 +37,7 @@ const APPLICATION_TABLES = [
   "audit_logs",
   "password_reset_tokens",
   "revoked_tokens",
+  "notifications",
 ];
 
 function isDisposableDatabase(name) {
@@ -49,22 +53,29 @@ function requireExplicitOptIn(config) {
       `Refusing database writes. Set ${REQUIRED_OPT_IN} only for an isolated test database.`,
     );
   }
+
   if (!isDisposableDatabase(config.db.database)) {
     throw new Error(
       "Refusing database writes: DB_NAME must clearly contain a test, testing, or disposable component.",
     );
   }
+
   if (
     typeof config.jwtSecret !== "string" ||
     config.jwtSecret.length < 32 ||
     /replace_with_a_long_random_secret/i.test(config.jwtSecret)
   ) {
-    throw new Error("JWT_SECRET must be a non-placeholder value of at least 32 characters.");
+    throw new Error(
+      "JWT_SECRET must be a non-placeholder value of at least 32 characters.",
+    );
   }
 }
 
 async function assertDatabaseReady(pool, expectedDatabase) {
-  const [databaseRows] = await pool.query("SELECT DATABASE() AS selected_database");
+  const [databaseRows] = await pool.query(
+    "SELECT DATABASE() AS selected_database",
+  );
+
   assert.equal(
     databaseRows[0].selected_database,
     expectedDatabase,
@@ -76,15 +87,29 @@ async function assertDatabaseReady(pool, expectedDatabase) {
      FROM information_schema.tables
      WHERE table_schema = DATABASE()`,
   );
-  const tables = new Map(tableRows.map((row) => [row.TABLE_NAME, row.ENGINE]));
+
+  const tables = new Map(
+    tableRows.map((row) => [row.TABLE_NAME, row.ENGINE]),
+  );
+
   for (const table of ["schema_migrations", ...APPLICATION_TABLES]) {
-    assert.equal(tables.has(table), true, `Required table is missing: ${table}`);
-    assert.equal(tables.get(table), "InnoDB", `${table} must use InnoDB`);
+    assert.equal(
+      tables.has(table),
+      true,
+      `Required table is missing: ${table}`,
+    );
+
+    assert.equal(
+      tables.get(table),
+      "InnoDB",
+      `${table} must use InnoDB`,
+    );
   }
 
   const [migrationRows] = await pool.query(
     "SELECT migration FROM schema_migrations ORDER BY migration",
   );
+
   assert.deepEqual(
     migrationRows.map((row) => row.migration),
     MIGRATIONS,
@@ -94,31 +119,51 @@ async function assertDatabaseReady(pool, expectedDatabase) {
 
 function makeFixture(runId) {
   const roles = ["owner", "member", "collaborator", "outsider", "admin"];
+
   const emails = Object.fromEntries(
-    roles.map((role) => [role, `m2-live-${runId}-${role}@example.invalid`]),
+    roles.map((role) => [
+      role,
+      `m2-live-${runId}-${role}@example.invalid`,
+    ]),
   );
+
   const projectNames = {
     primary: `M2 live ${runId} primary`,
     renamed: `M2 live ${runId} renamed`,
     outsider: `M2 live ${runId} outsider`,
     adminArchive: `M2 live ${runId} admin archive`,
   };
+
   return { roles, emails, projectNames };
 }
 
 async function assertNoFixtureCollision(pool, fixture) {
   const emailValues = Object.values(fixture.emails);
   const projectValues = Object.values(fixture.projectNames);
+
   const [userRows] = await pool.execute(
-    `SELECT id FROM users WHERE email IN (${emailValues.map(() => "?").join(",")})`,
+    `SELECT id FROM users
+     WHERE email IN (${emailValues.map(() => "?").join(",")})`,
     emailValues,
   );
+
   const [projectRows] = await pool.execute(
-    `SELECT id FROM projects WHERE name IN (${projectValues.map(() => "?").join(",")})`,
+    `SELECT id FROM projects
+     WHERE name IN (${projectValues.map(() => "?").join(",")})`,
     projectValues,
   );
-  assert.equal(userRows.length, 0, "Generated test user marker already exists; refusing to run");
-  assert.equal(projectRows.length, 0, "Generated test project marker already exists; refusing to run");
+
+  assert.equal(
+    userRows.length,
+    0,
+    "Generated test user marker already exists; refusing to run",
+  );
+
+  assert.equal(
+    projectRows.length,
+    0,
+    "Generated test project marker already exists; refusing to run",
+  );
 }
 
 async function runApiChecks(pool, config, fixture) {
@@ -126,36 +171,61 @@ async function runApiChecks(pool, config, fixture) {
     jwtSecret: config.jwtSecret,
     jwtExpiresIn: config.jwtExpiresIn,
   });
-  const app = createApp({ ...services, corsOrigins: config.corsOrigins });
+
+  const app = createApp({
+    ...services,
+    corsOrigins: config.corsOrigins,
+  });
+
   const server = app.listen(0, "127.0.0.1");
+
   await new Promise((resolve, reject) => {
     server.once("listening", resolve);
     server.once("error", reject);
   });
 
   const baseUrl = `http://127.0.0.1:${server.address().port}/api/v1`;
+
   const users = {};
   const tokens = {};
 
-  async function request(path, { method = "GET", token, body, status } = {}) {
+  async function request(
+    path,
+    { method = "GET", token, body, status } = {},
+  ) {
     const headers = {};
-    if (token) headers.Authorization = `Bearer ${token}`;
-    if (body !== undefined) headers["Content-Type"] = "application/json";
+
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+
+    if (body !== undefined) {
+      headers["Content-Type"] = "application/json";
+    }
+
     const response = await fetch(`${baseUrl}${path}`, {
       method,
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
     });
-    const payload = response.status === 204 ? null : await response.json();
+
+    const payload =
+      response.status === 204 ? null : await response.json();
+
     assert.equal(
       response.status,
       status,
       `${method} ${path}: expected ${status}, received ${response.status} (${payload?.error?.code || "no error code"})`,
     );
+
     return payload;
   }
 
   try {
+    // ---------------------------------------------------------
+    // 1. Registration and login
+    // ---------------------------------------------------------
+
     for (const role of fixture.roles) {
       const result = await request("/auth/register", {
         method: "POST",
@@ -166,23 +236,42 @@ async function runApiChecks(pool, config, fixture) {
           password: fixture.password,
         },
       });
+
       users[role] = result.data.user;
     }
 
-    await pool.execute("UPDATE users SET role = 'ADMIN' WHERE id = ?", [users.admin.id]);
+    await pool.execute(
+      "UPDATE users SET role = 'ADMIN' WHERE id = ?",
+      [users.admin.id],
+    );
 
     for (const role of fixture.roles) {
       const result = await request("/auth/login", {
         method: "POST",
         status: 200,
-        body: { email: fixture.emails[role], password: fixture.password },
+        body: {
+          email: fixture.emails[role],
+          password: fixture.password,
+        },
       });
+
       tokens[role] = result.data.accessToken;
     }
 
-    const me = await request("/auth/me", { token: tokens.owner, status: 200 });
+    const me = await request("/auth/me", {
+      token: tokens.owner,
+      status: 200,
+    });
+
     assert.equal(me.data.user.id, users.owner.id);
-    await request("/projects", { status: 401 });
+
+    await request("/projects", {
+      status: 401,
+    });
+
+    // ---------------------------------------------------------
+    // 2. Project validation and CRUD
+    // ---------------------------------------------------------
 
     const invalidProject = await request("/projects", {
       method: "POST",
@@ -190,52 +279,81 @@ async function runApiChecks(pool, config, fixture) {
       body: { name: " " },
       status: 400,
     });
-    assert.equal(invalidProject.error.code, "VALIDATION_ERROR");
 
-    const primary = (await request("/projects", {
-      method: "POST",
-      token: tokens.owner,
-      body: { name: fixture.projectNames.primary, description: "mysql integration" },
-      status: 201,
-    })).data;
+    assert.equal(
+      invalidProject.error.code,
+      "VALIDATION_ERROR",
+    );
+
+    const primary = (
+      await request("/projects", {
+        method: "POST",
+        token: tokens.owner,
+        body: {
+          name: fixture.projectNames.primary,
+          description: "mysql integration",
+        },
+        status: 201,
+      })
+    ).data;
+
     assert.equal(primary.ownerId, users.owner.id);
 
     const listing = await request("/projects?page=1&limit=1", {
       token: tokens.owner,
       status: 200,
     });
+
     assert.equal(listing.pagination.total, 1);
+
     const retrieved = await request(`/projects/${primary.id}`, {
       token: tokens.owner,
       status: 200,
     });
+
     assert.equal(retrieved.data.name, fixture.projectNames.primary);
+
     const updated = await request(`/projects/${primary.id}`, {
       method: "PATCH",
       token: tokens.owner,
       body: { name: fixture.projectNames.renamed },
       status: 200,
     });
+
     assert.equal(updated.data.name, fixture.projectNames.renamed);
+
     const persistedProject = await request(`/projects/${primary.id}`, {
       token: tokens.owner,
       status: 200,
     });
-    assert.equal(persistedProject.data.name, fixture.projectNames.renamed);
 
-    await request(`/projects/${primary.id}`, { token: tokens.outsider, status: 403 });
+    assert.equal(
+      persistedProject.data.name,
+      fixture.projectNames.renamed,
+    );
+
+    await request(`/projects/${primary.id}`, {
+      token: tokens.outsider,
+      status: 403,
+    });
+
     await request(`/projects/${primary.id}/members`, {
       method: "POST",
       token: tokens.member,
       body: { userId: users.collaborator.id },
       status: 403,
     });
+
     await request(`/projects/${primary.id}/members`, {
       method: "POST",
       token: tokens.admin,
       body: { userId: users.collaborator.id },
       status: 403,
     });
+
+    // ---------------------------------------------------------
+    // 3. Project membership
+    // ---------------------------------------------------------
 
     for (const role of ["member", "collaborator"]) {
       await request(`/projects/${primary.id}/members`, {
@@ -245,20 +363,42 @@ async function runApiChecks(pool, config, fixture) {
         status: 201,
       });
     }
-    const members = await request(`/projects/${primary.id}/members?page=1&limit=2`, {
+
+    const members = await request(
+      `/projects/${primary.id}/members?page=1&limit=2`,
+      {
+        token: tokens.member,
+        status: 200,
+      },
+    );
+
+    assert.equal(members.pagination.total, 3);
+    assert.equal(members.data.length, 2);
+
+    await request(`/projects/${primary.id}`, {
       token: tokens.member,
       status: 200,
     });
-    assert.equal(members.pagination.total, 3);
-    assert.equal(members.data.length, 2);
-    await request(`/projects/${primary.id}`, { token: tokens.member, status: 200 });
-    await request(`/projects/${primary.id}`, { token: tokens.admin, status: 200 });
-    await request(`/projects/${primary.id}/members/${users.member.id}`, {
-      method: "DELETE",
-      token: tokens.owner,
-      status: 204,
+
+    await request(`/projects/${primary.id}`, {
+      token: tokens.admin,
+      status: 200,
     });
-    await request(`/projects/${primary.id}`, { token: tokens.member, status: 403 });
+
+    await request(
+      `/projects/${primary.id}/members/${users.member.id}`,
+      {
+        method: "DELETE",
+        token: tokens.owner,
+        status: 204,
+      },
+    );
+
+    await request(`/projects/${primary.id}`, {
+      token: tokens.member,
+      status: 403,
+    });
+
     await request(`/projects/${primary.id}/members`, {
       method: "POST",
       token: tokens.owner,
@@ -266,15 +406,23 @@ async function runApiChecks(pool, config, fixture) {
       status: 201,
     });
 
+    // ---------------------------------------------------------
+    // 4. Task creation and task updates
+    // ---------------------------------------------------------
+
     async function createTask(body) {
-      const task = (await request(`/projects/${primary.id}/tasks`, {
-        method: "POST",
-        token: tokens.owner,
-        body,
-        status: 201,
-      })).data;
+      const task = (
+        await request(`/projects/${primary.id}/tasks`, {
+          method: "POST",
+          token: tokens.owner,
+          body,
+          status: 201,
+        })
+      ).data;
+
       return task;
     }
+
     const assigned = await createTask({
       title: `M2 live assigned ${fixture.runId}`,
       status: "TODO",
@@ -282,35 +430,46 @@ async function runApiChecks(pool, config, fixture) {
       assigned_to: users.member.id,
       due_date: "2000-01-01",
     });
+
     await createTask({
       title: `M2 live done ${fixture.runId}`,
       status: "DONE",
       due_date: "2000-01-01",
     });
+
     const todo = await createTask({
       title: `M2 live todo ${fixture.runId}`,
       status: "TODO",
       due_date: "2000-01-01",
     });
+
     await request(`/tasks/${todo.id}`, {
       method: "PATCH",
       token: tokens.member,
       body: { status: "DONE" },
       status: 403,
     });
+
     const moved = await request(`/tasks/${assigned.id}`, {
       method: "PATCH",
       token: tokens.member,
       body: { status: "IN_PROGRESS" },
       status: 200,
     });
+
     assert.equal(moved.data.status, "IN_PROGRESS");
+
     const [persistedTask] = await pool.execute(
       "SELECT status FROM tasks WHERE id = ?",
       [assigned.id],
     );
+
     assert.equal(persistedTask[0].status, "IN_PROGRESS");
-        // Activity History: verify task events are persisted and access is scoped.
+
+    // ---------------------------------------------------------
+    // 5. Activity History
+    // ---------------------------------------------------------
+
     const activityResponse = await request(
       `/projects/${primary.id}/activity?page=1&limit=20`,
       {
@@ -324,10 +483,15 @@ async function runApiChecks(pool, config, fixture) {
     const createdEvent = activityResponse.data.find(
       (event) =>
         event.eventType === "TASK_CREATED" &&
-        event.details?.title === `M2 live assigned ${fixture.runId}`,
+        event.details?.title ===
+          `M2 live assigned ${fixture.runId}`,
     );
 
-    assert.ok(createdEvent, "Task creation activity should be recorded");
+    assert.ok(
+      createdEvent,
+      "Task creation activity should be recorded",
+    );
+
     assert.equal(createdEvent.projectId, String(primary.id));
     assert.equal(createdEvent.userId, String(users.owner.id));
 
@@ -342,6 +506,7 @@ async function runApiChecks(pool, config, fixture) {
       updatedEvent,
       "The assigned task status update should be recorded",
     );
+
     await request(`/projects/${primary.id}/activity`, {
       token: tokens.outsider,
       status: 403,
@@ -360,108 +525,383 @@ async function runApiChecks(pool, config, fixture) {
       "Task creation events should be persisted in audit_logs",
     );
 
-    const board = await request(`/projects/${primary.id}/board?page=1&limit=20`, {
-      token: tokens.member,
-      status: 200,
-    });
+    // ---------------------------------------------------------
+    // 6. Notification Service and API
+    // ---------------------------------------------------------
+    // IMPORTANT:
+    // This block is placed after user registration, login, and
+    // task creation because it needs users.member, tokens.member,
+    // and the assigned task.
+
+    const firstNotification =
+      await services.notificationService.create({
+        userId: String(users.member.id),
+        type: "TASK_ASSIGNED",
+        title: `Integration notification ${fixture.runId}`,
+        message: "A task was assigned to you",
+        data: {
+          taskId: String(assigned.id),
+        },
+      });
+
+    const secondNotification =
+      await services.notificationService.create({
+        userId: String(users.member.id),
+        type: "TASK_REMINDER",
+        title: `Integration reminder ${fixture.runId}`,
+        message: "This is an integration-test reminder",
+        data: {
+          taskId: String(assigned.id),
+        },
+      });
+
+    assert.ok(
+      firstNotification.id,
+      "First notification should be persisted",
+    );
+
+    assert.ok(
+      secondNotification.id,
+      "Second notification should be persisted",
+    );
+
+    // Verify notification listing and pagination.
+    const notificationList = await request(
+      "/notifications?page=1&limit=20",
+      {
+        token: tokens.member,
+        status: 200,
+      },
+    );
+
+    assert.ok(
+      Array.isArray(notificationList.data),
+      "Notification response should contain a data array",
+    );
+
+    assert.equal(
+      notificationList.pagination.total,
+      2,
+      "Member should have exactly two integration notifications",
+    );
+
+    const listedNotificationIds = notificationList.data.map(
+      (notification) => String(notification.id),
+    );
+
+    assert.ok(
+      listedNotificationIds.includes(String(firstNotification.id)),
+    );
+
+    assert.ok(
+      listedNotificationIds.includes(String(secondNotification.id)),
+    );
+
+    // Verify unread count.
+    const unreadBefore = await request(
+      "/notifications/unread-count",
+      {
+        token: tokens.member,
+        status: 200,
+      },
+    );
+
+    const unreadBeforeCount =
+      unreadBefore.data?.count ?? unreadBefore.count;
+
+    assert.equal(
+      Number(unreadBeforeCount),
+      2,
+      "Member should have two unread notifications",
+    );
+
+    // Verify another user cannot see the member's notifications.
+    const outsiderNotifications = await request(
+      "/notifications?page=1&limit=20",
+      {
+        token: tokens.outsider,
+        status: 200,
+      },
+    );
+
+    assert.equal(
+      outsiderNotifications.pagination.total,
+      0,
+      "Outsider must not see another user's notifications",
+    );
+
+    // Mark one notification as read.
+    const markedRead = await request(
+      `/notifications/${firstNotification.id}/read`,
+      {
+        method: "PATCH",
+        token: tokens.member,
+        status: 200,
+      },
+    );
+
+    const markedReadRecord =
+      markedRead.data?.notification ?? markedRead.data;
+
+    assert.ok(
+      markedReadRecord,
+      "Mark-as-read should return the updated notification",
+    );
+
+    assert.equal(
+      Number(markedReadRecord.is_read),
+      1,
+      "Notification should be marked as read",
+    );
+
+    // Verify unread count decreased.
+    const unreadAfterOne = await request(
+      "/notifications/unread-count",
+      {
+        token: tokens.member,
+        status: 200,
+      },
+    );
+
+    const unreadAfterOneCount =
+      unreadAfterOne.data?.count ?? unreadAfterOne.count;
+
+    assert.equal(
+      Number(unreadAfterOneCount),
+      1,
+      "One unread notification should remain",
+    );
+
+    // Mark all remaining notifications as read.
+    const markedAllRead = await request(
+      "/notifications/read-all",
+      {
+        method: "PATCH",
+        token: tokens.member,
+        status: 200,
+      },
+    );
+
+    const updatedCount =
+      markedAllRead.data?.updatedCount ??
+      markedAllRead.updatedCount;
+
+    assert.equal(
+      Number(updatedCount),
+      1,
+      "Exactly one remaining notification should be marked as read",
+    );
+
+    // Verify no unread notifications remain.
+    const unreadAfterAll = await request(
+      "/notifications/unread-count",
+      {
+        token: tokens.member,
+        status: 200,
+      },
+    );
+
+    const unreadAfterAllCount =
+      unreadAfterAll.data?.count ?? unreadAfterAll.count;
+
+    assert.equal(
+      Number(unreadAfterAllCount),
+      0,
+      "No unread notifications should remain",
+    );
+
+    // Verify one user cannot mark another user's notification as read.
+    await request(
+      `/notifications/${firstNotification.id}/read`,
+      {
+        method: "PATCH",
+        token: tokens.outsider,
+        status: 404,
+      },
+    );
+
+    // ---------------------------------------------------------
+    // 7. Kanban board and dashboard
+    // ---------------------------------------------------------
+
+    const board = await request(
+      `/projects/${primary.id}/board?page=1&limit=20`,
+      {
+        token: tokens.member,
+        status: 200,
+      },
+    );
+
     assert.equal(board.pagination.total, 3);
     assert.equal(board.data.TODO.length, 1);
     assert.equal(board.data.IN_PROGRESS.length, 1);
     assert.equal(board.data.DONE.length, 1);
 
-    const dashboard = await request(`/projects/${primary.id}/dashboard`, {
-      token: tokens.member,
-      status: 200,
-    });
+    const dashboard = await request(
+      `/projects/${primary.id}/dashboard`,
+      {
+        token: tokens.member,
+        status: 200,
+      },
+    );
+
     assert.deepEqual(dashboard.data, {
-      countsByStatus: { TODO: 1, IN_PROGRESS: 1, DONE: 1 },
+      countsByStatus: {
+        TODO: 1,
+        IN_PROGRESS: 1,
+        DONE: 1,
+      },
       percentComplete: 33,
       overdue: 2,
     });
 
-    const outsiderProject = (await request("/projects", {
-      method: "POST",
-      token: tokens.outsider,
-      body: { name: fixture.projectNames.outsider },
-      status: 201,
-    })).data;
-    const foreignTask = (await request(`/projects/${outsiderProject.id}/tasks`, {
-      method: "POST",
-      token: tokens.outsider,
-      body: { title: `M2 live foreign ${fixture.runId}` },
-      status: 201,
-    })).data;
-    await request(`/tasks/${foreignTask.id}`, { token: tokens.owner, status: 403 });
-    await request(`/projects/${outsiderProject.id}/board`, { token: tokens.owner, status: 403 });
-    await request(`/projects/${outsiderProject.id}/dashboard`, { token: tokens.owner, status: 403 });
+    // ---------------------------------------------------------
+    // 8. Cross-project access restrictions
+    // ---------------------------------------------------------
 
-    const ownerComment = (await request(`/tasks/${assigned.id}/comments`, {
-      method: "POST",
+    const outsiderProject = (
+      await request("/projects", {
+        method: "POST",
+        token: tokens.outsider,
+        body: {
+          name: fixture.projectNames.outsider,
+        },
+        status: 201,
+      })
+    ).data;
+
+    const foreignTask = (
+      await request(`/projects/${outsiderProject.id}/tasks`, {
+        method: "POST",
+        token: tokens.outsider,
+        body: {
+          title: `M2 live foreign ${fixture.runId}`,
+        },
+        status: 201,
+      })
+    ).data;
+
+    await request(`/tasks/${foreignTask.id}`, {
       token: tokens.owner,
-      body: { body: "owner comment" },
-      status: 201,
-    })).data;
-    const memberComment = (await request(`/tasks/${assigned.id}/comments`, {
-      method: "POST",
-      token: tokens.member,
-      body: { body: "member comment" },
-      status: 201,
-    })).data;
-    const adminComment = (await request(`/tasks/${assigned.id}/comments`, {
-      method: "POST",
-      token: tokens.admin,
-      body: { body: "admin comment" },
-      status: 201,
-    })).data;
-
-    const comments = await request(`/tasks/${assigned.id}/comments?page=1&limit=2`, {
-      token: tokens.member,
-      status: 200,
+      status: 403,
     });
+
+    await request(`/projects/${outsiderProject.id}/board`, {
+      token: tokens.owner,
+      status: 403,
+    });
+
+    await request(`/projects/${outsiderProject.id}/dashboard`, {
+      token: tokens.owner,
+      status: 403,
+    });
+
+    // ---------------------------------------------------------
+    // 9. Comments
+    // ---------------------------------------------------------
+
+    const ownerComment = (
+      await request(`/tasks/${assigned.id}/comments`, {
+        method: "POST",
+        token: tokens.owner,
+        body: { body: "owner comment" },
+        status: 201,
+      })
+    ).data;
+
+    const memberComment = (
+      await request(`/tasks/${assigned.id}/comments`, {
+        method: "POST",
+        token: tokens.member,
+        body: { body: "member comment" },
+        status: 201,
+      })
+    ).data;
+
+    const adminComment = (
+      await request(`/tasks/${assigned.id}/comments`, {
+        method: "POST",
+        token: tokens.admin,
+        body: { body: "admin comment" },
+        status: 201,
+      })
+    ).data;
+
+    const comments = await request(
+      `/tasks/${assigned.id}/comments?page=1&limit=2`,
+      {
+        token: tokens.member,
+        status: 200,
+      },
+    );
+
     assert.equal(comments.pagination.total, 3);
     assert.equal(comments.data.length, 2);
+
     await request(`/tasks/${assigned.id}/comments`, {
       method: "POST",
       token: tokens.owner,
       body: { body: "  " },
       status: 400,
     });
+
     await request(`/comments/${ownerComment.id}`, {
       method: "PATCH",
       token: tokens.member,
       body: { body: "unauthorized edit" },
       status: 403,
     });
-    const edited = await request(`/comments/${memberComment.id}`, {
-      method: "PATCH",
-      token: tokens.member,
-      body: { body: "member edited" },
-      status: 200,
-    });
+
+    const edited = await request(
+      `/comments/${memberComment.id}`,
+      {
+        method: "PATCH",
+        token: tokens.member,
+        body: { body: "member edited" },
+        status: 200,
+      },
+    );
+
     assert.equal(edited.data.body, "member edited");
+
     await request(`/comments/${memberComment.id}`, {
       method: "DELETE",
       token: tokens.member,
       status: 204,
     });
+
     await request(`/comments/${ownerComment.id}`, {
       method: "DELETE",
       token: tokens.owner,
       status: 204,
     });
+
     await request(`/comments/${adminComment.id}`, {
       method: "DELETE",
       token: tokens.admin,
       status: 204,
     });
-    await request(`/tasks/${foreignTask.id}/comments`, { token: tokens.owner, status: 403 });
+
+    await request(`/tasks/${foreignTask.id}/comments`, {
+      token: tokens.owner,
+      status: 403,
+    });
+
     await assert.rejects(
       pool.execute(
         "INSERT INTO comments (task_id, author_id, body) VALUES (?, ?, ?)",
-        ["18446744073709551614", users.owner.id, "foreign key check"],
+        [
+          "18446744073709551614",
+          users.owner.id,
+          "foreign key check",
+        ],
       ),
       (error) => error.code === "ER_NO_REFERENCED_ROW_2",
     );
+
+    // ---------------------------------------------------------
+    // 10. Admin permissions and project archiving
+    // ---------------------------------------------------------
 
     await request(`/projects/${primary.id}`, {
       method: "PATCH",
@@ -469,55 +909,79 @@ async function runApiChecks(pool, config, fixture) {
       body: { name: "admin settings denial" },
       status: 403,
     });
-    const adminProject = (await request("/projects", {
-      method: "POST",
-      token: tokens.outsider,
-      body: { name: fixture.projectNames.adminArchive },
-      status: 201,
-    })).data;
+
+    const adminProject = (
+      await request("/projects", {
+        method: "POST",
+        token: tokens.outsider,
+        body: {
+          name: fixture.projectNames.adminArchive,
+        },
+        status: 201,
+      })
+    ).data;
+
     await request(`/projects/${adminProject.id}/archive`, {
       method: "POST",
       token: tokens.admin,
       status: 200,
     });
 
-    const archived = await request(`/projects/${primary.id}/archive`, {
-      method: "POST",
-      token: tokens.owner,
-      status: 200,
-    });
+    const archived = await request(
+      `/projects/${primary.id}/archive`,
+      {
+        method: "POST",
+        token: tokens.owner,
+        status: 200,
+      },
+    );
+
     assert.equal(archived.data.archived, true);
-    const repeatedArchive = await request(`/projects/${primary.id}/archive`, {
-      method: "POST",
-      token: tokens.owner,
+
+    const repeatedArchive = await request(
+      `/projects/${primary.id}/archive`,
+      {
+        method: "POST",
+        token: tokens.owner,
+        status: 200,
+      },
+    );
+
+    assert.equal(repeatedArchive.data.archived, true);
+
+    await request(`/projects/${primary.id}`, {
+      token: tokens.member,
       status: 200,
     });
-    assert.equal(repeatedArchive.data.archived, true);
-    await request(`/projects/${primary.id}`, { token: tokens.member, status: 200 });
+
     await request(`/projects/${primary.id}`, {
       method: "PATCH",
       token: tokens.owner,
       body: { name: "archived write denial" },
       status: 409,
     });
+
     await request(`/projects/${primary.id}/members`, {
       method: "POST",
       token: tokens.owner,
       body: { userId: users.outsider.id },
       status: 409,
     });
+
     await request(`/projects/${primary.id}/tasks`, {
       method: "POST",
       token: tokens.owner,
       body: { title: "archived task write denial" },
       status: 409,
     });
+
     await request(`/tasks/${assigned.id}`, {
       method: "PATCH",
       token: tokens.member,
       body: { status: "DONE" },
       status: 409,
     });
+
     await request(`/tasks/${assigned.id}/comments`, {
       method: "POST",
       token: tokens.owner,
@@ -525,22 +989,41 @@ async function runApiChecks(pool, config, fixture) {
       status: 409,
     });
 
+    // ---------------------------------------------------------
+    // 11. Logout and token revocation
+    // ---------------------------------------------------------
+
     const tokenId = jwt.decode(tokens.owner)?.jti;
-    assert.equal(typeof tokenId, "string", "Login token must have a JWT ID");
+
+    assert.equal(
+      typeof tokenId,
+      "string",
+      "Login token must have a JWT ID",
+    );
+
     await request("/auth/logout", {
       method: "POST",
       token: tokens.owner,
       status: 204,
     });
+
     const [revocationRows] = await pool.execute(
-      "SELECT COUNT(*) AS total FROM revoked_tokens WHERE token_id = ? AND user_id = ?",
+      `SELECT COUNT(*) AS total
+       FROM revoked_tokens
+       WHERE token_id = ? AND user_id = ?`,
       [tokenId, users.owner.id],
     );
+
     assert.equal(Number(revocationRows[0].total), 1);
-    await request("/auth/me", { token: tokens.owner, status: 401 });
+
+    await request("/auth/me", {
+      token: tokens.owner,
+      status: 401,
+    });
 
     return {
       userIds: Object.values(users).map((user) => String(user.id)),
+
       checks: [
         "registration/login, protected and unauthenticated access, logout revocation",
         "project CRUD, validation, membership, pagination, owner/admin policy",
@@ -549,6 +1032,7 @@ async function runApiChecks(pool, config, fixture) {
         "comment CRUD, validation, pagination, permissions, foreign key enforcement",
         "archive idempotency and archived write restrictions",
         "Activity History persistence, task events, and project access control",
+        "Notification creation, persistence, pagination, unread counts, read operations, and user isolation",
       ],
     };
   } finally {
@@ -559,25 +1043,40 @@ async function runApiChecks(pool, config, fixture) {
 async function cleanupFixture(pool, fixture) {
   const emails = Object.values(fixture.emails);
   const projectNames = Object.values(fixture.projectNames);
+
   const [users] = await pool.execute(
-    `SELECT id FROM users WHERE email IN (${emails.map(() => "?").join(",")})`,
+    `SELECT id FROM users
+     WHERE email IN (${emails.map(() => "?").join(",")})`,
     emails,
   );
+
   const userIds = users.map((row) => String(row.id));
+
   const [projects] = await pool.execute(
-    `SELECT id FROM projects WHERE name IN (${projectNames.map(() => "?").join(",")})`,
+    `SELECT id FROM projects
+     WHERE name IN (${projectNames.map(() => "?").join(",")})`,
     projectNames,
   );
+
   const projectIds = projects.map((row) => String(row.id));
+
   let taskIds = [];
+
+  // -----------------------------------------------------------
+  // Remove project-related test data.
+  // -----------------------------------------------------------
 
   if (projectIds.length > 0) {
     const placeholders = projectIds.map(() => "?").join(",");
+
     const [tasks] = await pool.execute(
-      `SELECT id FROM tasks WHERE project_id IN (${placeholders})`,
+      `SELECT id FROM tasks
+       WHERE project_id IN (${placeholders})`,
       projectIds,
     );
+
     taskIds = tasks.map((row) => String(row.id));
+
     await pool.execute(
       `DELETE c FROM comments c
        INNER JOIN tasks t ON t.id = c.task_id
@@ -586,58 +1085,105 @@ async function cleanupFixture(pool, fixture) {
     );
 
     await pool.execute(
-      `DELETE FROM audit_logs WHERE project_id IN (${placeholders})`,
+      `DELETE FROM audit_logs
+       WHERE project_id IN (${placeholders})`,
       projectIds,
     );
 
     await pool.execute(
-      `DELETE FROM tasks WHERE project_id IN (${placeholders})`,
+      `DELETE FROM tasks
+       WHERE project_id IN (${placeholders})`,
       projectIds,
     );
+
     await pool.execute(
-      `DELETE FROM project_members WHERE project_id IN (${placeholders})`,
+      `DELETE FROM project_members
+       WHERE project_id IN (${placeholders})`,
       projectIds,
     );
+
     await pool.execute(
-      `DELETE FROM projects WHERE id IN (${placeholders})`,
+      `DELETE FROM projects
+       WHERE id IN (${placeholders})`,
       projectIds,
     );
   }
+
+  // -----------------------------------------------------------
+  // Remove user-related test data.
+  // -----------------------------------------------------------
 
   if (userIds.length > 0) {
     const placeholders = userIds.map(() => "?").join(",");
+
     await pool.execute(
-      `DELETE FROM revoked_tokens WHERE user_id IN (${placeholders})`,
+      `DELETE FROM notifications
+       WHERE user_id IN (${placeholders})`,
       userIds,
     );
+
     await pool.execute(
-      `DELETE FROM password_reset_tokens WHERE user_id IN (${placeholders})`,
+      `DELETE FROM revoked_tokens
+       WHERE user_id IN (${placeholders})`,
       userIds,
     );
+
     await pool.execute(
-      `DELETE FROM audit_logs WHERE user_id IN (${placeholders})`,
+      `DELETE FROM password_reset_tokens
+       WHERE user_id IN (${placeholders})`,
       userIds,
     );
+
     await pool.execute(
-      `DELETE FROM project_members WHERE user_id IN (${placeholders})`,
+      `DELETE FROM audit_logs
+       WHERE user_id IN (${placeholders})`,
       userIds,
     );
+
     await pool.execute(
-      `DELETE FROM users WHERE id IN (${placeholders})`,
+      `DELETE FROM project_members
+       WHERE user_id IN (${placeholders})`,
+      userIds,
+    );
+
+    await pool.execute(
+      `DELETE FROM users
+       WHERE id IN (${placeholders})`,
       userIds,
     );
   }
 
+  // -----------------------------------------------------------
+  // Verify users and projects were removed.
+  // -----------------------------------------------------------
+
   const [remainingUsers] = await pool.execute(
-    `SELECT id FROM users WHERE email IN (${emails.map(() => "?").join(",")})`,
+    `SELECT id FROM users
+     WHERE email IN (${emails.map(() => "?").join(",")})`,
     emails,
   );
+
   const [remainingProjects] = await pool.execute(
-    `SELECT id FROM projects WHERE name IN (${projectNames.map(() => "?").join(",")})`,
+    `SELECT id FROM projects
+     WHERE name IN (${projectNames.map(() => "?").join(",")})`,
     projectNames,
   );
-  assert.equal(remainingUsers.length, 0, "Test user cleanup was incomplete");
-  assert.equal(remainingProjects.length, 0, "Test project cleanup was incomplete");
+
+  assert.equal(
+    remainingUsers.length,
+    0,
+    "Test user cleanup was incomplete",
+  );
+
+  assert.equal(
+    remainingProjects.length,
+    0,
+    "Test project cleanup was incomplete",
+  );
+
+  // -----------------------------------------------------------
+  // Verify related test records were removed.
+  // -----------------------------------------------------------
 
   for (const [table, column, values] of [
     ["project_members", "project_id", projectIds],
@@ -646,35 +1192,59 @@ async function cleanupFixture(pool, fixture) {
     ["revoked_tokens", "user_id", userIds],
     ["password_reset_tokens", "user_id", userIds],
     ["audit_logs", "user_id", userIds],
+    ["notifications", "user_id", userIds],
   ]) {
-    if (values.length === 0) continue;
+    if (values.length === 0) {
+      continue;
+    }
+
     const placeholders = values.map(() => "?").join(",");
+
     const [rows] = await pool.execute(
-      `SELECT 1 FROM \`${table}\` WHERE \`${column}\` IN (${placeholders}) LIMIT 1`,
+      `SELECT 1
+       FROM \`${table}\`
+       WHERE \`${column}\` IN (${placeholders})
+       LIMIT 1`,
       values,
     );
-    assert.equal(rows.length, 0, `Test data cleanup was incomplete for ${table}`);
+
+    assert.equal(
+      rows.length,
+      0,
+      `Test data cleanup was incomplete for ${table}`,
+    );
   }
 
-  return { removedUsers: userIds.length, removedProjects: projectIds.length };
+  return {
+    removedUsers: userIds.length,
+    removedProjects: projectIds.length,
+  };
 }
 
 async function main() {
   const config = getConfig();
+
   requireExplicitOptIn(config);
+
   const pool = createPool(config.db);
+
   const runId = crypto.randomUUID();
   const fixture = makeFixture(runId);
+
   fixture.runId = runId;
   fixture.password = `M2live${crypto.randomBytes(9).toString("hex")}7a`;
+
   let result;
   let primaryError;
   let fixtureSafeToClean = false;
 
   try {
     await assertDatabaseReady(pool, config.db.database);
+
     await assertNoFixtureCollision(pool, fixture);
+
     fixtureSafeToClean = true;
+
     result = await runApiChecks(pool, config, fixture);
   } catch (error) {
     primaryError = error;
@@ -682,26 +1252,51 @@ async function main() {
     if (fixtureSafeToClean) {
       try {
         const cleanup = await cleanupFixture(pool, fixture);
-        console.info(JSON.stringify({ cleanup: "verified", ...cleanup }));
+
+        console.info(
+          JSON.stringify({
+            cleanup: "verified",
+            ...cleanup,
+          }),
+        );
       } catch (error) {
-        console.error(`CRITICAL: MySQL integration-test cleanup failed: ${error.message}`);
-        if (!primaryError) primaryError = error;
+        console.error(
+          `CRITICAL: MySQL integration-test cleanup failed: ${error.message}`,
+        );
+
+        if (!primaryError) {
+          primaryError = error;
+        }
       }
     }
+
     await pool.end();
   }
 
   if (primaryError) {
     throw primaryError;
   }
-  console.info(JSON.stringify({ result: "passed", ...result }));
+
+  console.info(
+    JSON.stringify({
+      result: "passed",
+      ...result,
+    }),
+  );
 }
 
 if (require.main === module) {
   main().catch((error) => {
-    console.error(`MySQL integration test failed: ${error.message}`);
+    console.error(
+      `MySQL integration test failed: ${error.message}`,
+    );
+
     process.exitCode = 1;
   });
 }
 
-module.exports = { assertDatabaseReady, isDisposableDatabase, requireExplicitOptIn };
+module.exports = {
+  assertDatabaseReady,
+  isDisposableDatabase,
+  requireExplicitOptIn,
+};

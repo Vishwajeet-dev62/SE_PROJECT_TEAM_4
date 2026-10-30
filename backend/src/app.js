@@ -20,6 +20,10 @@ const {
   createActivityRouter,
 } = require("./routes/activityRoutes");
 
+const {
+  createNotificationRouter,
+} = require("./routes/notificationRoutes");
+
 const DEFAULT_CORS_ORIGINS = ["http://localhost:5173"];
 
 function createApp({
@@ -30,6 +34,7 @@ function createApp({
   taskService,
   activityService,
   authService,
+  notificationService,
 } = {}) {
   const app = express();
 
@@ -60,6 +65,13 @@ function createApp({
     );
   }
 
+    if (notificationService) {
+    app.use(
+      "/api/v1/notifications",
+      createNotificationRouter({ notificationService, requireAuth }),
+    );
+  }
+
   if (commentService) {
     app.use(
       "/api/v1",
@@ -81,6 +93,7 @@ function createApp({
         (!projectService && req.path.startsWith("/api/v1/projects")) ||
         req.path.startsWith("/api/v1/tasks") ||
         (!commentService && req.path.startsWith("/api/v1/comments/"))
+        (!notificationService && req.path.startsWith("/api/v1/notifications")) 
       )
     ) {
       return res.status(503).json({

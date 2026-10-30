@@ -25,6 +25,7 @@ test("Member 2 migrations have stable order and explicit external dependencies",
     "009_align_schema_column_names.sql",
     "010_align_project_member_column_name.sql",
     "011_add_project_to_audit_logs.sql",
+    "012_create_notifications.sql"
   ]);
 
   assert.equal(MIGRATION_DEPENDENCIES["001_users.sql"], undefined);
