@@ -19,7 +19,7 @@ used for ownership.
 | Archived projects are read-only (SRS TM-F-020) | Outside Sprint 1; shared contract rule | Project/comment services and repositories; board/member/comment UI controls | Backend/frontend tests plus live archive, idempotency, and rejected project/task/comment writes | Implemented; live API/database verified | Restoration is not specified by the shared contract. |
 | Dashboard counts, completion percentage, and overdue tasks (SRS TM-F-031) | Outside Sprint 1; Member 2 ownership is in the integration contract | Project repository/service and dashboard component | Backend/frontend tests plus live database task fixtures verified status totals, 33% completion, and overdue count | Implemented; live query verified | None identified in the tested aggregation behavior. |
 | Kanban task grouping and presentation (SRS TM-F-030) | Outside Sprint 1; Member 2 ownership is in the integration contract | Project repository/service and `frontend/src/features/board/ProjectBoard.jsx` | Backend/frontend tests plus live board grouping, pagination, and authorized-project checks | Implemented; live query verified | None identified in the tested board reads. |
-| Kanban status persistence through task PATCH | Outside Sprint 1; task writes are Member 1's responsibility | Frontend client calls `PATCH /api/v1/tasks/:id`; production app wires the task service with JWT authentication and owner-or-assignee authorization | Frontend request tests plus live task update by assignee, unauthorized member denial, and direct persisted-status read | Integrated; live persistence verified | Browser UI was not connected to the live database during this run. |
+| Kanban status persistence through task PATCH | Outside Sprint 1; task writes are Member 1's responsibility | Frontend client calls `PATCH /api/v1/tasks/:id`; production app wires the task service with JWT authentication and owner-or-assignee authorization | Frontend request tests; historical live HTTP run on 2026-10-27 reported task update persistence and unauthorized-member denial | Integrated; historical live persistence evidence | Browser UI was not connected to the live database; historical evidence was not reproduced in the current audit. |
 | Comment list/create/edit/delete and permission rules (SRS TM-F-040) | Outside Sprint 1; Member 2 ownership is in the integration contract | Comment service/repository/controller and comments UI; `005_comments.sql` depends on `004_tasks.sql` | Backend/frontend tests plus live pagination, create/edit/delete, author-only edit, owner/admin delete, cross-project denial, and FK rejection checks | Implemented; live API/database verified | None identified in the tested comment operations. |
 | Member 2 and auth integration MySQL migrations | Outside Sprint 1 for the Member 2 feature set | Project/membership/comment migrations plus `008_revoked_tokens.sql`; migration runner checks prerequisites | All eight migrations applied and verified; second run reported schema up to date; metadata showed nine InnoDB tables and eleven expected foreign keys | Implemented; live schema verified | Automated migration tests still use a fake pool. Guarded `npm run test:mysql` is available but was not run in this task. |
 | No mock authentication or sample project/task data | Required integration rule in the shared contract | Production server wires `createRequireAuth`; frontend sign-in uses real API, memory-only JWT state, and explicit error states | Live registration/login, protected endpoint, logout revocation, and revoked-token rejection against MySQL-backed services | Implemented; live API/database verified | Full browser-authenticated UI/database demonstration was not run. |
@@ -27,10 +27,11 @@ used for ownership.
 
 The automated Member 2 tests verify service rules, route behavior, in-memory
 frontend authentication, token forwarding/revocation, and frontend feature
-behavior. A separate live MySQL run completed on 2026-10-27 using an initially
-empty disposable database. It applied and verified all migrations, exercised
-the listed API persistence and authorization paths, and removed temporary
-records. The migration ledger remains; all application tables were empty after
-cleanup. A guarded repeatable integration script is now available as
-`npm run test:mysql`; it was added after that live run and was not executed
-during this task.
+behavior. This audit freshly ran the focused backend project/access/comment
+tests (16 passed) and frontend project/dashboard/board/comment tests (15
+passed across 6 files). A separate live MySQL run completed on 2026-10-27
+using an initially empty disposable database; the recorded run applied and
+verified all migrations, exercised API persistence and authorization paths,
+and removed temporary records. That historical run was not reproduced in this
+audit. The guarded `npm run test:mysql` script was added afterward and was not
+executed. No fresh GitHub Actions run was verified.
