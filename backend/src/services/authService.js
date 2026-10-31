@@ -4,6 +4,7 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { ApiError } = require("../errors/apiError");
 const { toPublicUser } = require("../repositories/userRepository");
+const { AUDIT_EVENTS } = require("./auditLog");
 
 const MIN_SECRET_LENGTH = 32;
 const DEFAULT_BCRYPT_COST = 12;
@@ -17,6 +18,7 @@ class AuthService {
     jwtSecret,
     jwtExpiresIn = "30m",
     bcryptCost = DEFAULT_BCRYPT_COST,
+    auditLog = async () => {},
   }) {
     if (typeof jwtSecret !== "string" || jwtSecret.length < MIN_SECRET_LENGTH) {
       throw new Error(
@@ -38,10 +40,11 @@ class AuthService {
     this.jwtSecret = jwtSecret;
     this.jwtExpiresIn = jwtExpiresIn;
     this.bcryptCost = bcryptCost;
+    this.auditLog = auditLog;
     this.dummyHash = bcrypt.hashSync("not-a-real-password-1", bcryptCost);
   }
 
-  async register({ name, email, password }) {
+  async register({ name, email, password }, context = {}) {
     const passwordHash = await bcrypt.hash(password, this.bcryptCost);
     const user = await this.userRepository.create({
       name,
@@ -49,10 +52,16 @@ class AuthService {
       passwordHash,
     });
 
+    await this.auditLog({
+      userId: user.id,
+      eventType: AUDIT_EVENTS.USER_REGISTERED,
+      ip: context.ip,
+    });
+
     return toPublicUser(user);
   }
 
-  async login({ email, password }) {
+  async login({ email, password }, context = {}) {
     const user = await this.userRepository.findByEmail(email);
 
     // Keep credential errors generic for unknown and inactive accounts.
@@ -60,6 +69,7 @@ class AuthService {
     const passwordMatches = await bcrypt.compare(password, hash);
 
     if (!user || !user.active) {
+      await this.auditFailedLogin(user, context, user ? "inactive" : "unknown_user");
       throw new ApiError(
         401,
         "INVALID_CREDENTIALS",
@@ -76,6 +86,7 @@ class AuthService {
           new Date(user.lockedUntil).getTime() > Date.now();
 
     if (currentlyLocked) {
+      await this.auditFailedLogin(user, context, "account_locked");
       throw new ApiError(
         401,
         "INVALID_CREDENTIALS",
@@ -92,6 +103,16 @@ class AuthService {
         );
       }
 
+      await this.auditFailedLogin(user, context, "bad_password");
+      if (await this.isLockedNow(user.id)) {
+        await this.auditLog({
+          userId: user.id,
+          eventType: AUDIT_EVENTS.ACCOUNT_LOCKED,
+          ip: context.ip,
+          details: { lockoutMinutes: LOCKOUT_MINUTES },
+        });
+      }
+
       throw new ApiError(
         401,
         "INVALID_CREDENTIALS",
@@ -103,18 +124,46 @@ class AuthService {
       await this.userRepository.resetFailedLogins(user.id);
     }
 
+    await this.auditLog({
+      userId: user.id,
+      eventType: AUDIT_EVENTS.LOGIN_SUCCESS,
+      ip: context.ip,
+    });
+
     return {
       accessToken: this.signToken(user),
       user: toPublicUser(user),
     };
   }
 
-  async logout({ tokenId, userId, expiresAt }) {
+  async logout({ tokenId, userId, expiresAt, ip }) {
     await this.tokenRevocationRepository.revoke({
       tokenId,
       userId,
       expiresAt: new Date(expiresAt * 1000),
     });
+    await this.auditLog({ userId, eventType: AUDIT_EVENTS.LOGOUT, ip });
+  }
+
+  // Never stores the submitted email or password: either could be mistyped
+  // into the wrong field and would then sit in the log.
+  async auditFailedLogin(user, context, reason) {
+    await this.auditLog({
+      userId: user ? user.id : null,
+      eventType: AUDIT_EVENTS.LOGIN_FAILED,
+      ip: context.ip,
+      details: { reason },
+    });
+  }
+
+  async isLockedNow(userId) {
+    if (typeof this.userRepository.isLocked === "function") {
+      return this.userRepository.isLocked(userId);
+    }
+    const fresh = await this.userRepository.findById(userId);
+    return Boolean(
+      fresh && fresh.lockedUntil && new Date(fresh.lockedUntil).getTime() > Date.now(),
+    );
   }
 
   async getCurrentUser(userId) {
