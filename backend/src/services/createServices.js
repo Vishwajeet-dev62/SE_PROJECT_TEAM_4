@@ -19,6 +19,8 @@ const { ProjectService } = require("./projectService");
 const { TaskService } = require("./taskService");
 const { AdminService } = require("./adminService");
 const { PasswordResetRepository } = require("../repositories/passwordResetRepository");
+const { AssignmentRepository } = require("../repositories/assignmentRepository");
+const { AssignmentService } = require("./assignmentService");
 const { AuthService } = require("./authService");
 const {
   createDevEmailSender,
@@ -57,6 +59,16 @@ function createServices(pool, authConfig = {}) {
     taskRepository,
     projectService,
     projectRepository,
+    activityService,
+  });
+
+  const assignmentService = new AssignmentService({
+    projectService,
+    projectRepository,
+    taskRepository,
+    taskService,
+    assignmentRepository: new AssignmentRepository(pool),
+    notificationService,
     activityService,
   });
 
@@ -101,6 +113,7 @@ function createServices(pool, authConfig = {}) {
     activityService,
     commentService,
     taskService,
+    assignmentService,
     authService,
     requireAuth,
     auditLog,
