@@ -14,6 +14,7 @@ const {
 const { createProjectRouter } = require("./routes/projectRoutes");
 const { createAdminRouter } = require("./routes/adminRoutes");
 const { createAuthRouter } = require("./routes/authRoutes");
+const { createPasswordResetRouter } = require("./routes/passwordResetRoutes");
 const {
   createTaskServiceRouter,
 } = require("./routes/taskServiceRoutes");
@@ -36,6 +37,7 @@ function createApp({
   activityService,
   authService,
   adminService,
+  passwordResetService,
   notificationService,
 } = {}) {
   const app = express();
@@ -51,6 +53,9 @@ function createApp({
 
   if (adminService) {
     app.use("/api/v1/admin", createAdminRouter({ adminService, requireAuth }));
+  }
+  if (passwordResetService) {
+    app.use("/api/v1/auth", createPasswordResetRouter({ passwordResetService }));
   }
   if (authService) {
     app.use("/api/v1/auth", createAuthRouter({ authService, requireAuth }));
