@@ -17,6 +17,7 @@ const {
 const { CommentService } = require("./commentService");
 const { ProjectService } = require("./projectService");
 const { TaskService } = require("./taskService");
+const { AdminService } = require("./adminService");
 const { AuthService } = require("./authService");
 const { ActivityService } = require("./activityService");
 const { createRequireAuth } = require("../middleware/requireAuth");
@@ -66,6 +67,8 @@ function createServices(pool, authConfig = {}) {
     jwtExpiresIn: authConfig.jwtExpiresIn,
   });
 
+  const adminService = new AdminService({ userRepository, auditLog });
+
   const requireAuth = createRequireAuth({
     jwtSecret: authConfig.jwtSecret,
     userRepository,
@@ -80,6 +83,7 @@ function createServices(pool, authConfig = {}) {
     authService,
     requireAuth,
     auditLog,
+    adminService,
     notificationService,
   };
 }

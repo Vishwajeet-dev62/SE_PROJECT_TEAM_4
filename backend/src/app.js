@@ -12,6 +12,7 @@ const {
   createCommentRouter,
 } = require("./controllers/commentController");
 const { createProjectRouter } = require("./routes/projectRoutes");
+const { createAdminRouter } = require("./routes/adminRoutes");
 const { createAuthRouter } = require("./routes/authRoutes");
 const {
   createTaskServiceRouter,
@@ -34,6 +35,7 @@ function createApp({
   taskService,
   activityService,
   authService,
+  adminService,
   notificationService,
 } = {}) {
   const app = express();
@@ -47,6 +49,9 @@ function createApp({
     res.status(200).json({ status: "ok" });
   });
 
+  if (adminService) {
+    app.use("/api/v1/admin", createAdminRouter({ adminService, requireAuth }));
+  }
   if (authService) {
     app.use("/api/v1/auth", createAuthRouter({ authService, requireAuth }));
   }

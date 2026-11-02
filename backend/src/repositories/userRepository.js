@@ -109,6 +109,42 @@ class UserRepository {
       [id],
     );
   }
+  async listAll({ limit, offset }) {
+    const [rows] = await this.pool.execute(
+      `SELECT id, name, email, role, active, locked_until, created_at
+       FROM users
+       ORDER BY id ASC
+       LIMIT ? OFFSET ?`,
+      [limit, offset],
+    );
+    const [countRows] = await this.pool.execute(
+      "SELECT COUNT(*) AS total FROM users",
+    );
+    return {
+      rows: rows.map((row) => ({
+        id: String(row.id),
+        name: row.name,
+        email: row.email,
+        role: row.role,
+        active: Boolean(row.active),
+        lockedUntil: row.locked_until,
+        createdAt: row.created_at,
+      })),
+      total: Number(countRows[0].total),
+    };
+  }
+
+  async setRole(id, role) {
+    await this.pool.execute("UPDATE users SET role = ? WHERE id = ?", [role, id]);
+  }
+
+  async setActive(id, active) {
+    await this.pool.execute(
+      "UPDATE users SET active = ? WHERE id = ?",
+      [active ? 1 : 0, id],
+    );
+  }
+
 }
 
 function mapUser(row) {
@@ -136,4 +172,17 @@ function toPublicUser(user) {
   };
 }
 
-module.exports = { UserRepository, toPublicUser };
+// Admin views add account state but still never expose the hash.
+function toAdminUser(user) {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    active: user.active,
+    lockedUntil: user.lockedUntil ?? null,
+    createdAt: user.createdAt,
+  };
+}
+
+module.exports = { UserRepository, toAdminUser, toPublicUser };
