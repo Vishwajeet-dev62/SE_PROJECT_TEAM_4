@@ -18,7 +18,13 @@ const { CommentService } = require("./commentService");
 const { ProjectService } = require("./projectService");
 const { TaskService } = require("./taskService");
 const { AdminService } = require("./adminService");
+const { PasswordResetRepository } = require("../repositories/passwordResetRepository");
 const { AuthService } = require("./authService");
+const {
+  createDevEmailSender,
+  createUnconfiguredEmailSender,
+} = require("./emailSender");
+const { PasswordResetService } = require("./passwordResetService");
 const { ActivityService } = require("./activityService");
 const { createRequireAuth } = require("../middleware/requireAuth");
 
@@ -69,6 +75,21 @@ function createServices(pool, authConfig = {}) {
 
   const adminService = new AdminService({ userRepository, auditLog });
 
+  // TEMPORARY email sender until the notification service can send email.
+  const passwordResetService = new PasswordResetService({
+    passwordResetRepository: new PasswordResetRepository(pool),
+    userRepository,
+    auditLog,
+    emailSender:
+      process.env.NODE_ENV === "production"
+        ? createUnconfiguredEmailSender()
+        : createDevEmailSender(),
+    resetUrlBase:
+      authConfig.passwordResetUrl
+      || process.env.PASSWORD_RESET_URL
+      || "http://localhost:5173/reset-password",
+  });
+
   const requireAuth = createRequireAuth({
     jwtSecret: authConfig.jwtSecret,
     userRepository,
@@ -84,6 +105,7 @@ function createServices(pool, authConfig = {}) {
     requireAuth,
     auditLog,
     adminService,
+    passwordResetService,
     notificationService,
   };
 }
