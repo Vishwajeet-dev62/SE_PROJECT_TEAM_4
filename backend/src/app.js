@@ -7,6 +7,7 @@ const {
 } = require("./middleware/authenticationUnavailable");
 const { createCorsMiddleware } = require("./middleware/cors");
 const { errorHandler } = require("./middleware/errorHandler");
+const { createRateLimiter } = require("./middleware/rateLimit");
 const { requestContext } = require("./middleware/requestContext");
 const {
   createCommentRouter,
@@ -38,6 +39,7 @@ function createApp({
   authService,
   adminService,
   passwordResetService,
+  authRateLimit = {},
   notificationService,
 } = {}) {
   const app = express();
@@ -50,6 +52,15 @@ function createApp({
   app.get("/health", (_req, res) => {
     res.status(200).json({ status: "ok" });
   });
+
+  // authRateLimit: false disables limiting (never do that in production).
+  if (authRateLimit !== false) {
+    const loginLimiter = createRateLimiter(authRateLimit);
+    const resetLimiter = createRateLimiter(authRateLimit);
+    app.use("/api/v1/auth/login", loginLimiter);
+    app.use("/api/v1/auth/forgot-password", resetLimiter);
+    app.use("/api/v1/auth/reset-password", resetLimiter);
+  }
 
   if (adminService) {
     app.use("/api/v1/admin", createAdminRouter({ adminService, requireAuth }));
