@@ -14,6 +14,7 @@ const {
 } = require("./controllers/commentController");
 const { createProjectRouter } = require("./routes/projectRoutes");
 const { createAdminRouter } = require("./routes/adminRoutes");
+const { createAssignmentRouter } = require("./routes/assignmentRoutes");
 const { createAuthRouter } = require("./routes/authRoutes");
 const { createPasswordResetRouter } = require("./routes/passwordResetRoutes");
 const {
@@ -35,6 +36,7 @@ function createApp({
   projectService,
   commentService,
   taskService,
+  assignmentService,
   activityService,
   authService,
   adminService,
@@ -98,6 +100,10 @@ function createApp({
       "/api/v1",
       createCommentRouter({ express, commentService, requireAuth }),
     );
+  }
+
+  if (assignmentService) {
+    app.use("/api/v1", createAssignmentRouter({ assignmentService, requireAuth }));
   }
 
   if (taskService) {
