@@ -17,11 +17,13 @@ class TaskService {
     taskRepository,
     projectService,
     projectRepository,
+    categoryRepository,
     activityService,
   }) {
     this.taskRepository = taskRepository;
     this.projectService = projectService;
     this.projectRepository = projectRepository;
+    this.categoryRepository = categoryRepository;
     this.activityService = activityService;
   }
 
@@ -31,6 +33,7 @@ class TaskService {
       projectIdInput,
       user,
     );
+
     const pagination = parsePagination(query);
 
     if (!pagination) {
@@ -60,6 +63,7 @@ class TaskService {
       taskIdInput,
       user,
     );
+
     const fullTask = await this.taskRepository.findById(task.id);
 
     if (!fullTask) {
@@ -75,6 +79,7 @@ class TaskService {
       projectIdInput,
       user,
     );
+
     this.projectService.assertWritable(project);
 
     const { input, errors } = validateTaskBody(body);
@@ -84,6 +89,7 @@ class TaskService {
     }
 
     await this.validateAssignee(input.assigned_to, project);
+    await this.validateCategory(input.category_id, project);
 
     const taskId = await this.taskRepository.create({
       projectId: project.id,
@@ -160,14 +166,36 @@ class TaskService {
       await this.validateAssignee(input.assigned_to, project);
     }
 
-    const changes = { ...input };
+    if (Object.hasOwn(input, "category_id")) {
+      await this.validateCategory(input.category_id, project);
+    }
+
+    // Map API request fields (snake_case) to repository fields (camelCase).
+    // Only fields explicitly included in the request are updated.
+    const changes = {};
+
+    const fieldMap = {
+      title: "title",
+      description: "description",
+      status: "status",
+      priority: "priority",
+      assigned_to: "assignedTo",
+      category_id: "categoryId",
+      due_date: "dueDate",
+    };
+
+    for (const [inputField, repositoryField] of Object.entries(fieldMap)) {
+      if (Object.hasOwn(input, inputField)) {
+        changes[repositoryField] = input[inputField];
+      }
+    }
 
     if (typeof changes.title === "string") {
       changes.title = changes.title.trim();
     }
 
-    if (changes.due_date === "") {
-      changes.due_date = null;
+    if (changes.dueDate === "") {
+      changes.dueDate = null;
     }
 
     const updated = await this.taskRepository.update(
@@ -194,7 +222,7 @@ class TaskService {
       eventType: "TASK_UPDATED",
       details: {
         taskId: updatedTask.id,
-        changedFields: Object.keys(changes),
+        changedFields: Object.keys(input),
       },
     });
 
@@ -238,6 +266,7 @@ class TaskService {
       projectIdInput,
       user,
     );
+
     const pagination = parsePagination(query);
 
     if (!pagination) {
@@ -277,6 +306,7 @@ class TaskService {
       task.projectId,
       user,
     );
+
     this.projectService.assertWritable(project);
 
     const restored = await this.taskRepository.restore(task.id);
@@ -347,6 +377,16 @@ class TaskService {
       filters.assignedTo = String(id);
     }
 
+    if (query.categoryId !== undefined && query.categoryId !== "") {
+      const id = parsePositiveInteger(query.categoryId, null);
+
+      if (id === null) {
+        throw validationError("Invalid categoryId filter");
+      }
+
+      filters.categoryId = String(id);
+    }
+
     if (query.search !== undefined && query.search !== "") {
       if (
         typeof query.search !== "string" ||
@@ -372,6 +412,27 @@ class TaskService {
     }
 
     return filters;
+  }
+
+  async validateCategory(categoryId, project) {
+    if (categoryId === undefined || categoryId === null) {
+      return;
+    }
+
+    const id = parseId(categoryId, "category_id");
+
+    const exists = await this.categoryRepository.existsForProject(
+      project.id,
+      id,
+    );
+
+    if (!exists) {
+      throw new ApiError(
+        400,
+        "CATEGORY_NOT_IN_PROJECT",
+        "The selected category does not belong to this project",
+      );
+    }
   }
 
   async validateAssignee(assigneeId, project) {

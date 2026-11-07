@@ -117,6 +117,7 @@ test("listForProject scopes results and parameterizes filters", async () => {
     call.sql,
     /t\.due_date IS NOT NULL AND t\.due_date <= \?/,
   );
+
   assert.deepEqual(call.params, [
     "7", "TODO", "HIGH", "20", "%report%", "2026-12-01", 20, 0,
   ]);
@@ -135,6 +136,50 @@ test("listForProject escapes SQL LIKE wildcard characters", async () => {
   assert.equal(pool.calls[0].params[1], "%100\\%\\_done%");
 });
 
+test("listForProject filters tasks by category using parameterized SQL", async () => {
+  const pool = createPoolMock({ rows: [sampleTask] });
+  const repository = new TaskRepository(pool);
+
+  await repository.listForProject("7", {
+    limit: 20,
+    offset: 0,
+    categoryId: "5",
+  });
+
+  const call = pool.calls[0];
+
+  assert.match(call.sql, /t\.category_id = \?/);
+  assert.deepEqual(call.params, ["7", "5", 20, 0]);
+});
+
+test("listForProject combines category filter with other filters", async () => {
+  const pool = createPoolMock({ rows: [sampleTask] });
+  const repository = new TaskRepository(pool);
+
+  await repository.listForProject("7", {
+    limit: 20,
+    offset: 0,
+    status: "TODO",
+    priority: "HIGH",
+    categoryId: "5",
+  });
+
+  const call = pool.calls[0];
+
+  assert.match(call.sql, /t\.status = \?/);
+  assert.match(call.sql, /t\.priority = \?/);
+  assert.match(call.sql, /t\.category_id = \?/);
+
+  assert.deepEqual(call.params, [
+    "7",
+    "TODO",
+    "HIGH",
+    "5",
+    20,
+    0,
+  ]);
+});
+
 test("countForProject returns the filtered task count", async () => {
   const pool = createPoolMock();
   const repository = new TaskRepository(pool);
@@ -147,6 +192,35 @@ test("countForProject returns the filtered task count", async () => {
   assert.match(pool.calls[0].sql, /t\.project_id = \?/);
   assert.match(pool.calls[0].sql, /t\.deleted_at IS NULL/);
   assert.deepEqual(pool.calls[0].params, ["7", "DONE"]);
+});
+
+test("countForProject filters tasks by category using parameterized SQL", async () => {
+  const pool = createPoolMock();
+  const repository = new TaskRepository(pool);
+
+  const total = await repository.countForProject("7", {
+    categoryId: "5",
+  });
+
+  assert.equal(total, 2);
+  assert.match(pool.calls[0].sql, /t\.category_id = \?/);
+  assert.deepEqual(pool.calls[0].params, ["7", "5"]);
+});
+
+test("countForProject combines category and status filters", async () => {
+  const pool = createPoolMock();
+  const repository = new TaskRepository(pool);
+
+  await repository.countForProject("7", {
+    categoryId: "5",
+    status: "TODO",
+  });
+
+  const call = pool.calls[0];
+
+  assert.match(call.sql, /t\.category_id = \?/);
+  assert.match(call.sql, /t\.status = \?/);
+  assert.deepEqual(call.params, ["7", "TODO", "5"]);
 });
 
 test("update only updates supported supplied fields", async () => {
@@ -170,6 +244,7 @@ test("update only updates supported supplied fields", async () => {
     pool.calls[0].sql,
     /t\.created_by = \? OR t\.assigned_to = \?/,
   );
+
   assert.deepEqual(pool.calls[0].params, [
     "Updated report", "IN_PROGRESS", "42", "20", "20",
   ]);

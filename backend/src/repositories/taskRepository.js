@@ -85,6 +85,7 @@ class TaskRepository {
       status,
       priority,
       assignedTo,
+      categoryId,
       search,
       dueBefore,
     },
@@ -109,6 +110,11 @@ class TaskRepository {
     if (assignedTo !== undefined) {
       conditions.push("t.assigned_to = ?");
       values.push(assignedTo);
+    }
+
+    if (categoryId !== undefined) {
+      conditions.push("t.category_id = ?");
+      values.push(categoryId);
     }
 
     if (search !== undefined && search !== "") {
@@ -141,6 +147,7 @@ class TaskRepository {
       status,
       priority,
       assignedTo,
+      categoryId,
       search,
       dueBefore,
     } = {},
@@ -165,6 +172,11 @@ class TaskRepository {
     if (assignedTo !== undefined) {
       conditions.push("t.assigned_to = ?");
       values.push(assignedTo);
+    }
+
+    if (categoryId !== undefined) {
+      conditions.push("t.category_id = ?");
+      values.push(categoryId);
     }
 
     if (search !== undefined && search !== "") {

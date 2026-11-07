@@ -1,3 +1,6 @@
+
+"use strict";
+
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const { createPool } = require("../src/config/database");
@@ -15,15 +18,18 @@ const MIGRATION_DEPENDENCIES = {
   "010_align_project_member_column_name.sql": ["project_members"],
   "011_add_project_to_audit_logs.sql": ["users", "projects"],
   "012_create_notifications.sql": ["users"],
+  "013_create_categories.sql": ["projects", "tasks"],
 };
 
 async function tableExists(connection, tableName) {
   const [rows] = await connection.execute(
     `SELECT COUNT(*) AS table_count
      FROM information_schema.tables
-     WHERE table_schema = DATABASE() AND table_name = ?`,
+     WHERE table_schema = DATABASE()
+       AND table_name = ?`,
     [tableName],
   );
+
   return Number(rows[0].table_count) > 0;
 }
 
@@ -46,17 +52,19 @@ async function assertDependencies(connection, filename) {
 }
 
 async function runMigrations(pool, migrationsDirectory) {
+  // Use the existing database's migration-history column: version.
   await pool.query(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
-      migration VARCHAR(255) NOT NULL,
+      version VARCHAR(255) NOT NULL,
       applied_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-      PRIMARY KEY (migration)
+      PRIMARY KEY (version)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
 
   const filenames = (await fs.readdir(migrationsDirectory))
     .filter((filename) => /^\d{3}_[a-z0-9_]+\.sql$/.test(filename))
     .sort();
+
   const connection = await pool.getConnection();
   const completed = [];
   let lockAcquired = false;
@@ -66,15 +74,20 @@ async function runMigrations(pool, migrationsDirectory) {
       "SELECT GET_LOCK(?, 30) AS lock_acquired",
       ["task_manager_schema_migrations"],
     );
+
     lockAcquired = Number(lockRows[0].lock_acquired) === 1;
+
     if (!lockAcquired) {
       throw new Error("Could not acquire the database migration lock");
     }
 
     const [appliedRows] = await connection.execute(
-      "SELECT migration FROM schema_migrations",
+      "SELECT version FROM schema_migrations",
     );
-    const applied = new Set(appliedRows.map((row) => row.migration));
+
+    const applied = new Set(
+      appliedRows.map((row) => row.version),
+    );
 
     for (const filename of filenames) {
       if (applied.has(filename)) {
@@ -82,12 +95,19 @@ async function runMigrations(pool, migrationsDirectory) {
       }
 
       await assertDependencies(connection, filename);
-      const sql = await fs.readFile(path.join(migrationsDirectory, filename), "utf8");
+
+      const sql = await fs.readFile(
+        path.join(migrationsDirectory, filename),
+        "utf8",
+      );
+
       await connection.query(sql);
+
       await connection.execute(
-        "INSERT INTO schema_migrations (migration) VALUES (?)",
+        "INSERT INTO schema_migrations (version) VALUES (?)",
         [filename],
       );
+
       completed.push(filename);
     }
   } finally {
@@ -115,6 +135,7 @@ async function main() {
       pool,
       path.join(__dirname, "..", "migrations"),
     );
+
     if (completed.length === 0) {
       console.info("Database schema is up to date");
     } else {
@@ -132,4 +153,8 @@ if (require.main === module) {
   });
 }
 
-module.exports = { assertDependencies, runMigrations, MIGRATION_DEPENDENCIES };
+module.exports = {
+  assertDependencies,
+  runMigrations,
+  MIGRATION_DEPENDENCIES,
+};
