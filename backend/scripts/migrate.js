@@ -19,6 +19,7 @@ const MIGRATION_DEPENDENCIES = {
   "011_add_project_to_audit_logs.sql": ["users", "projects"],
   "012_create_notifications.sql": ["users"],
   "013_create_categories.sql": ["projects", "tasks"],
+  "014_create_tags.sql": ["projects", "tasks"],
 };
 
 async function tableExists(connection, tableName) {
@@ -101,7 +102,14 @@ async function runMigrations(pool, migrationsDirectory) {
         "utf8",
       );
 
-      await connection.query(sql);
+      const statements = sql
+        .split(";")
+        .map((statement) => statement.trim())
+        .filter((statement) => statement.length > 0);
+
+      for (const statement of statements) {
+        await connection.query(statement);
+      }
 
       await connection.execute(
         "INSERT INTO schema_migrations (version) VALUES (?)",

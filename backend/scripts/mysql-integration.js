@@ -26,6 +26,8 @@ const MIGRATIONS = [
   "010_align_project_member_column_name.sql",
   "011_add_project_to_audit_logs.sql",
   "012_create_notifications.sql",
+  "013_create_categories.sql",
+  "014_create_tags.sql",
 ];
 
 const APPLICATION_TABLES = [
@@ -38,6 +40,9 @@ const APPLICATION_TABLES = [
   "password_reset_tokens",
   "revoked_tokens",
   "notifications",
+  "categories",
+  "tags",
+  "task_tags",
 ];
 
 function isDisposableDatabase(name) {
@@ -528,10 +533,6 @@ async function runApiChecks(pool, config, fixture) {
     // ---------------------------------------------------------
     // 6. Notification Service and API
     // ---------------------------------------------------------
-    // IMPORTANT:
-    // This block is placed after user registration, login, and
-    // task creation because it needs users.member, tokens.member,
-    // and the assigned task.
 
     const firstNotification =
       await services.notificationService.create({
@@ -565,7 +566,6 @@ async function runApiChecks(pool, config, fixture) {
       "Second notification should be persisted",
     );
 
-    // Verify notification listing and pagination.
     const notificationList = await request(
       "/notifications?page=1&limit=20",
       {
@@ -597,7 +597,6 @@ async function runApiChecks(pool, config, fixture) {
       listedNotificationIds.includes(String(secondNotification.id)),
     );
 
-    // Verify unread count.
     const unreadBefore = await request(
       "/notifications/unread-count",
       {
@@ -615,7 +614,6 @@ async function runApiChecks(pool, config, fixture) {
       "Member should have two unread notifications",
     );
 
-    // Verify another user cannot see the member's notifications.
     const outsiderNotifications = await request(
       "/notifications?page=1&limit=20",
       {
@@ -630,7 +628,6 @@ async function runApiChecks(pool, config, fixture) {
       "Outsider must not see another user's notifications",
     );
 
-    // Mark one notification as read.
     const markedRead = await request(
       `/notifications/${firstNotification.id}/read`,
       {
@@ -654,7 +651,6 @@ async function runApiChecks(pool, config, fixture) {
       "Notification should be marked as read",
     );
 
-    // Verify unread count decreased.
     const unreadAfterOne = await request(
       "/notifications/unread-count",
       {
@@ -672,7 +668,6 @@ async function runApiChecks(pool, config, fixture) {
       "One unread notification should remain",
     );
 
-    // Mark all remaining notifications as read.
     const markedAllRead = await request(
       "/notifications/read-all",
       {
@@ -692,7 +687,6 @@ async function runApiChecks(pool, config, fixture) {
       "Exactly one remaining notification should be marked as read",
     );
 
-    // Verify no unread notifications remain.
     const unreadAfterAll = await request(
       "/notifications/unread-count",
       {
@@ -710,7 +704,6 @@ async function runApiChecks(pool, config, fixture) {
       "No unread notifications should remain",
     );
 
-    // Verify one user cannot mark another user's notification as read.
     await request(
       `/notifications/${firstNotification.id}/read`,
       {
@@ -1193,6 +1186,9 @@ async function cleanupFixture(pool, fixture) {
     ["password_reset_tokens", "user_id", userIds],
     ["audit_logs", "user_id", userIds],
     ["notifications", "user_id", userIds],
+    ["categories", "project_id", projectIds],
+    ["tags", "project_id", projectIds],
+    ["task_tags", "project_id", projectIds],
   ]) {
     if (values.length === 0) {
       continue;

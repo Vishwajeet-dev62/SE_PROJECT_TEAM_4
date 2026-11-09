@@ -5,26 +5,75 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { TaskRepository } = require("../src/repositories/taskRepository");
 
-function createPoolMock({ rows = [], result = {} } = {}) {
+function createPoolMock({
+  rows = [],
+  result = {},
+  transactionRows = [{ id: 42, project_id: 7 }],
+} = {}) {
   const calls = [];
+  const transactions = {
+    began: 0,
+    committed: 0,
+    rolledBack: 0,
+    released: 0,
+  };
 
-  return {
-    calls,
+  function execute(sql, params = []) {
+    calls.push({ sql, params });
+
+    if (/COUNT\s*\(\s*\*\s*\)/i.test(sql)) {
+      return Promise.resolve([[{ total: "2" }]]);
+    }
+
+    if (sql.trimStart().startsWith("SELECT")) {
+      return Promise.resolve([rows]);
+    }
+
+    return Promise.resolve([{
+      affectedRows: result.affectedRows ?? 1,
+      insertId: result.insertId ?? 42,
+    }]);
+  }
+
+  const connection = {
     async execute(sql, params = []) {
       calls.push({ sql, params });
 
-      if (sql.includes("COUNT(*)")) {
-        return [[{ total: "2" }]];
-      }
-
       if (sql.trimStart().startsWith("SELECT")) {
-        return [rows];
+        return [transactionRows];
       }
 
       return [{
         affectedRows: result.affectedRows ?? 1,
         insertId: result.insertId ?? 42,
       }];
+    },
+
+    async beginTransaction() {
+      transactions.began++;
+    },
+
+    async commit() {
+      transactions.committed++;
+    },
+
+    async rollback() {
+      transactions.rolledBack++;
+    },
+
+    release() {
+      transactions.released++;
+    },
+  };
+
+  return {
+    calls,
+    transactions,
+
+    execute,
+
+    async getConnection() {
+      return connection;
     },
   };
 }
@@ -237,17 +286,38 @@ test("update only updates supported supplied fields", async () => {
   );
 
   assert.equal(updated, true);
-  assert.match(pool.calls[0].sql, /INNER JOIN projects p/);
-  assert.match(pool.calls[0].sql, /t\.deleted_at IS NULL/);
-  assert.match(pool.calls[0].sql, /p\.is_archived = 0/);
-  assert.match(
-    pool.calls[0].sql,
-    /t\.created_by = \? OR t\.assigned_to = \?/,
+
+  const selectCall = pool.calls.find((call) =>
+    call.sql.includes("FOR UPDATE"),
   );
 
-  assert.deepEqual(pool.calls[0].params, [
-    "Updated report", "IN_PROGRESS", "42", "20", "20",
+  const updateCall = pool.calls.find((call) =>
+    call.sql.trimStart().startsWith("UPDATE tasks t"),
+  );
+
+  assert.ok(selectCall);
+  assert.ok(updateCall);
+
+  assert.match(updateCall.sql, /INNER JOIN projects p/);
+  assert.match(updateCall.sql, /t.deleted_at IS NULL/);
+  assert.match(updateCall.sql, /p.is_archived = 0/);
+  assert.match(
+    updateCall.sql,
+    /t.created_by = \? OR t.assigned_to = \?/,
+  );
+
+  assert.deepEqual(updateCall.params, [
+    "Updated report",
+    "IN_PROGRESS",
+    "42",
+    "20",
+    "20",
   ]);
+
+  assert.equal(pool.transactions.began, 1);
+  assert.equal(pool.transactions.committed, 1);
+  assert.equal(pool.transactions.rolledBack, 0);
+  assert.equal(pool.transactions.released, 1);
 });
 
 test("update refuses an empty changes object", async () => {

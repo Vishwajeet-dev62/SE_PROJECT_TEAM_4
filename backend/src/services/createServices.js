@@ -8,6 +8,9 @@ const { CategoryRepository } = require("../repositories/categoryRepository");
 const { UserRepository } = require("../repositories/userRepository");
 const { AuditLogRepository } = require("../repositories/auditLogRepository");
 const { createAuditLog } = require("./auditLog");
+const { TagRepository } = require("../repositories/tagRepository");
+const { TagService } = require("./tagService");
+
 
 const {
   TokenRevocationRepository,
@@ -73,20 +76,27 @@ function createServices(pool, authConfig = {}) {
     projectService,
   });
 
-  // Tasks and categories
+  // Tasks, categories and tags
   const taskRepository = new TaskRepository(pool);
   const categoryRepository = new CategoryRepository(pool);
+  const tagRepository = new TagRepository(pool);
 
   const taskService = new TaskService({
     taskRepository,
     projectService,
     projectRepository,
     categoryRepository,
+    tagRepository,
     activityService,
   });
 
   const categoryService = new CategoryService({
     categoryRepository,
+    projectService,
+  });
+
+  const tagService = new TagService({
+    tagRepository,
     projectService,
   });
 
@@ -151,6 +161,7 @@ function createServices(pool, authConfig = {}) {
     authService,
     requireAuth,
     categoryService,
+    tagService,
     auditLog,
     adminService,
     passwordResetService,

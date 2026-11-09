@@ -1,15 +1,39 @@
+"use strict";
+
 const express = require("express");
-const { createProjectController } = require("../controllers/projectController");
+const {
+  createProjectController,
+} = require("../controllers/projectController");
 const { createCategoryRouter } = require("./categoryRoutes");
+const { createTagRouter } = require("./tagRoutes");
 const { asyncHandler } = require("../utils/asyncHandler");
 
-function createProjectRouter({ projectService, requireAuth,categoryService, }) {
+function createProjectRouter({
+  projectService,
+  requireAuth,
+  categoryService,
+  tagService,
+}) {
   const router = express.Router();
+
   const controller = createProjectController(projectService);
+
   router.use(requireAuth);
+
   router.use(
-  "/:id/categories",
-  createCategoryRouter({ categoryService, requireAuth }),
+    "/:id/categories",
+    createCategoryRouter({
+      categoryService,
+      requireAuth,
+    }),
+  );
+
+  router.use(
+    "/:id/tags",
+    createTagRouter({
+      tagService,
+      requireAuth,
+    }),
   );
 
   router.get("/", asyncHandler(controller.list));
