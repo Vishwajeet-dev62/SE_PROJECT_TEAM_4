@@ -162,12 +162,15 @@ The Member 2 response is:
 active tasks. `overdue` counts active tasks whose due date is before the
 current UTC date and whose status is not `DONE`.
 
-## Remaining integration work
+## Integration status
 
-The shared contract records the category/tag scope, JWT session and
-revocation policy, reminder behavior, pagination limits, and project-access
-interface. The Member 2 UI now uses the backend JWT contract and logout
-revocation. The migration set and project/task/comment persistence were
-verified against disposable live MySQL on 2026-10-27. Password reset and
-account lockout remain in Member 3's auth scope. The live verification was a
-one-off run rather than a checked-in automated MySQL integration suite.
+The current shared contract confirms category/tag scope, JWT session and
+revocation policy, reminder behavior, pagination limits, and the project
+access interface. The Member 2 UI uses the backend JWT contract and logout
+revocation. A historical disposable-MySQL run on 2026-10-27 verified
+migrations and project/task/comment persistence; it was not reproduced in the
+current audit. The checked-in `npm run test:mysql` script was added after that
+run and was not executed in this audit. Password reset and account lockout
+remain in Member 3's authentication scope. No Member 2 notification event is
+defined by the shared contract; assignment and password-reset notifications
+remain with their specified consumers.

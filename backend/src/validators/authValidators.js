@@ -94,4 +94,9 @@ function invalid(message, field, detail) {
   return new ApiError(400, "VALIDATION_ERROR", message, { [field]: detail });
 }
 
-module.exports = { validateLogin, validateRegister };
+module.exports = {
+  validateEmail,
+  validateLogin,
+  validateNewPassword,
+  validateRegister,
+};

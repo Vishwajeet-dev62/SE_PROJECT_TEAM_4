@@ -93,8 +93,11 @@ task service also enforces that only the task creator or assigned user can
 edit a task. The repository repeats that check in the update predicate so a
 concurrent assignment change cannot invalidate the permission decision. The
 frontend sends the bearer token and refreshes the board after a successful
-status update. Component/API tests cover this flow; persistence against live
-MySQL has not been verified.
+status update. Component/API tests cover this flow. A historical live
+MySQL-backed HTTP run on 2026-10-27 verified status persistence and denied an
+unauthorized member; that run was not repeated in the current audit, and the
+authenticated browser UI was not connected to the live database. The checked-in
+`npm run test:mysql` script was added afterward and was not run in this audit.
 
 ## Comments
 

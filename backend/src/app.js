@@ -9,6 +9,7 @@ const {
 
 const { createCorsMiddleware } = require("./middleware/cors");
 const { errorHandler } = require("./middleware/errorHandler");
+const { createRateLimiter } = require("./middleware/rateLimit");
 const { requestContext } = require("./middleware/requestContext");
 
 const {
@@ -16,7 +17,12 @@ const {
 } = require("./controllers/commentController");
 
 const { createProjectRouter } = require("./routes/projectRoutes");
+const { createAdminRouter } = require("./routes/adminRoutes");
+const { createAssignmentRouter } = require("./routes/assignmentRoutes");
 const { createAuthRouter } = require("./routes/authRoutes");
+const {
+  createPasswordResetRouter,
+} = require("./routes/passwordResetRoutes");
 
 const {
   createTaskServiceRouter,
@@ -39,8 +45,12 @@ function createApp({
   commentService,
   categoryService,
   taskService,
+  assignmentService,
   activityService,
   authService,
+  adminService,
+  passwordResetService,
+  authRateLimit = {},
   notificationService,
 } = {}) {
   const app = express();
@@ -56,6 +66,32 @@ function createApp({
     res.status(200).json({ status: "ok" });
   });
 
+  // Authentication rate limiting
+  if (authRateLimit !== false) {
+    const loginLimiter = createRateLimiter(authRateLimit);
+    const resetLimiter = createRateLimiter(authRateLimit);
+
+    app.use("/api/v1/auth/login", loginLimiter);
+    app.use("/api/v1/auth/forgot-password", resetLimiter);
+    app.use("/api/v1/auth/reset-password", resetLimiter);
+  }
+
+  // Admin routes
+  if (adminService) {
+    app.use(
+      "/api/v1/admin",
+      createAdminRouter({ adminService, requireAuth }),
+    );
+  }
+
+  // Password reset routes
+  if (passwordResetService) {
+    app.use(
+      "/api/v1/auth",
+      createPasswordResetRouter({ passwordResetService }),
+    );
+  }
+
   // Authentication routes
   if (authService) {
     app.use(
@@ -64,11 +100,15 @@ function createApp({
     );
   }
 
-  // Project routes
+  // Project routes, including categories
   if (projectService) {
     app.use(
       "/api/v1/projects",
-      createProjectRouter({ projectService, requireAuth, categoryService, }),
+      createProjectRouter({
+        projectService,
+        requireAuth,
+        categoryService,
+      }),
     );
   }
 
@@ -103,6 +143,14 @@ function createApp({
     );
   }
 
+  // Assignment routes
+  if (assignmentService) {
+    app.use(
+      "/api/v1",
+      createAssignmentRouter({ assignmentService, requireAuth }),
+    );
+  }
+
   // Task routes
   if (taskService) {
     app.use(
@@ -131,7 +179,9 @@ function createApp({
       (!notificationService &&
         req.path.startsWith("/api/v1/notifications")) ||
       (!authService &&
-        req.path.startsWith("/api/v1/auth"));
+        req.path.startsWith("/api/v1/auth")) ||
+      (!adminService &&
+        req.path.startsWith("/api/v1/admin"));
 
     if (isApiRequest && isUnconfiguredApi) {
       return res.status(503).json({

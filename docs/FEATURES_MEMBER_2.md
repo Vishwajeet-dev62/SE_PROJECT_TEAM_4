@@ -51,9 +51,10 @@ write logic.
   `008_revoked_tokens.sql` table; `GET /auth/me` returns the current public
   user. Forgot/reset password and account-lockout behavior remain
   authentication-module requirements outside Member 2's feature ownership.
-- Pagination defaults, some data fields, and admin write policy remain
-  proposals pending team confirmation as recorded in
-  [integration proposals](./INTEGRATION_PROPOSALS.md).
+- Pagination defaults and project archive/comment moderation policy are
+  confirmed in the shared integration contract. Some response fields remain
+  implementation details documented in [API.md](./API.md). The integration
+  proposal notes are historical and do not override the contract.
 
 ## Verification evidence
 
@@ -64,11 +65,13 @@ token forwarding/clearing, project loading and creation, dashboard rendering,
 board status calls/read-only state, and comment create/edit/delete behavior. See the
 [requirements traceability matrix](./REQUIREMENTS_TRACEABILITY.md).
 
-Live verification on 2026-10-27 used real MySQL-backed HTTP requests and
-separate owner, member, collaborator, outsider, and administrator accounts.
-It verified project and membership operations, cross-project denials, task
-status persistence, dashboard counts, comment permissions and pagination,
-archive read-only behavior, and token revocation. Test records were removed;
-the application tables were confirmed empty afterward. Project restoration
-is not part of the shared contract; archiving is the defined lifecycle
-operation.
+Historical live verification on 2026-10-27 used real MySQL-backed HTTP
+requests and separate owner, member, collaborator, outsider, and administrator
+accounts. The recorded run verified project and membership operations,
+cross-project denials, task status persistence, dashboard counts, comment
+permissions and pagination, archive read-only behavior, and token revocation.
+The run report says test records were removed and application tables were
+empty afterward. This evidence was not reproduced during the current audit.
+The checked-in `npm run test:mysql` script was added after that run and has not
+been executed in this audit. Project restoration is not part of the shared
+contract; archiving is the defined lifecycle operation.

@@ -6,24 +6,46 @@ const { ProjectRepository } = require("../repositories/projectRepository");
 const { TaskRepository } = require("../repositories/taskRepository");
 const { CategoryRepository } = require("../repositories/categoryRepository");
 const { UserRepository } = require("../repositories/userRepository");
+const { AuditLogRepository } = require("../repositories/auditLogRepository");
+const { createAuditLog } = require("./auditLog");
+
 const {
   TokenRevocationRepository,
 } = require("../repositories/tokenRevocationRepository");
+
 const {
   ActivityRepository,
 } = require("../repositories/activityRepository");
+
+const {
+  PasswordResetRepository,
+} = require("../repositories/passwordResetRepository");
+
+const {
+  AssignmentRepository,
+} = require("../repositories/assignmentRepository");
 
 const { CommentService } = require("./commentService");
 const { ProjectService } = require("./projectService");
 const { TaskService } = require("./taskService");
 const { CategoryService } = require("./categoryService");
+const { AdminService } = require("./adminService");
+const { AssignmentService } = require("./assignmentService");
 const { AuthService } = require("./authService");
+const { PasswordResetService } = require("./passwordResetService");
 const { ActivityService } = require("./activityService");
+
+const {
+  createDevEmailSender,
+  createUnconfiguredEmailSender,
+} = require("./emailSender");
+
 const { createRequireAuth } = require("../middleware/requireAuth");
 
 const {
   NotificationRepository,
 } = require("../repositories/notificationRepository");
+
 const { NotificationService } = require("./notificationService");
 
 function createServices(pool, authConfig = {}) {
@@ -68,15 +90,50 @@ function createServices(pool, authConfig = {}) {
     projectService,
   });
 
-  // Authentication
+  // Assignments
+  const assignmentService = new AssignmentService({
+    projectService,
+    projectRepository,
+    taskRepository,
+    taskService,
+    assignmentRepository: new AssignmentRepository(pool),
+    notificationService,
+    activityService,
+  });
+
+  // Authentication and audit
   const userRepository = new UserRepository(pool);
   const tokenRevocationRepository = new TokenRevocationRepository(pool);
 
+  const auditLog = createAuditLog(new AuditLogRepository(pool));
+
   const authService = new AuthService({
     userRepository,
+    auditLog,
     tokenRevocationRepository,
     jwtSecret: authConfig.jwtSecret,
     jwtExpiresIn: authConfig.jwtExpiresIn,
+  });
+
+  // Administration
+  const adminService = new AdminService({
+    userRepository,
+    auditLog,
+  });
+
+  // Password reset
+  const passwordResetService = new PasswordResetService({
+    passwordResetRepository: new PasswordResetRepository(pool),
+    userRepository,
+    auditLog,
+    emailSender:
+      process.env.NODE_ENV === "production"
+        ? createUnconfiguredEmailSender()
+        : createDevEmailSender(),
+    resetUrlBase:
+      authConfig.passwordResetUrl ||
+      process.env.PASSWORD_RESET_URL ||
+      "http://localhost:5173/reset-password",
   });
 
   const requireAuth = createRequireAuth({
@@ -90,9 +147,13 @@ function createServices(pool, authConfig = {}) {
     activityService,
     commentService,
     taskService,
+    assignmentService,
     authService,
     requireAuth,
     categoryService,
+    auditLog,
+    adminService,
+    passwordResetService,
     notificationService,
   };
 }
