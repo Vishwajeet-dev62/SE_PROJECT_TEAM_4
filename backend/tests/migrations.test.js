@@ -327,11 +327,15 @@ test("migration runner applies sorted files once under a database lock", async (
 
   await runMigrations(pool, migrationDirectory);
 
-  const expectedSql = filenames.map((filename) =>
-    fs.readFileSync(
+  const expectedSql = filenames.flatMap((filename) =>
+  fs
+    .readFileSync(
       path.join(migrationDirectory, filename),
       "utf8",
-    ),
+    )
+    .split(";")
+    .map((statement) => statement.trim())
+    .filter((statement) => statement.length > 0),
   );
 
   assert.deepEqual(state.executed, expectedSql);
