@@ -1,11 +1,16 @@
 const express = require("express");
 const { createProjectController } = require("../controllers/projectController");
+const { createCategoryRouter } = require("./categoryRoutes");
 const { asyncHandler } = require("../utils/asyncHandler");
 
-function createProjectRouter({ projectService, requireAuth }) {
+function createProjectRouter({ projectService, requireAuth,categoryService, }) {
   const router = express.Router();
   const controller = createProjectController(projectService);
   router.use(requireAuth);
+  router.use(
+  "/:id/categories",
+  createCategoryRouter({ categoryService, requireAuth }),
+  );
 
   router.get("/", asyncHandler(controller.list));
   router.post("/", asyncHandler(controller.create));

@@ -4,64 +4,93 @@
 const { CommentRepository } = require("../repositories/commentRepository");
 const { ProjectRepository } = require("../repositories/projectRepository");
 const { TaskRepository } = require("../repositories/taskRepository");
+const { CategoryRepository } = require("../repositories/categoryRepository");
 const { UserRepository } = require("../repositories/userRepository");
 const { AuditLogRepository } = require("../repositories/auditLogRepository");
 const { createAuditLog } = require("./auditLog");
+
 const {
   TokenRevocationRepository,
 } = require("../repositories/tokenRevocationRepository");
+
 const {
   ActivityRepository,
 } = require("../repositories/activityRepository");
 
+const {
+  PasswordResetRepository,
+} = require("../repositories/passwordResetRepository");
+
+const {
+  AssignmentRepository,
+} = require("../repositories/assignmentRepository");
+
 const { CommentService } = require("./commentService");
 const { ProjectService } = require("./projectService");
 const { TaskService } = require("./taskService");
+const { CategoryService } = require("./categoryService");
 const { AdminService } = require("./adminService");
-const { PasswordResetRepository } = require("../repositories/passwordResetRepository");
-const { AssignmentRepository } = require("../repositories/assignmentRepository");
 const { AssignmentService } = require("./assignmentService");
 const { AuthService } = require("./authService");
+const { PasswordResetService } = require("./passwordResetService");
+const { ActivityService } = require("./activityService");
+
 const {
   createDevEmailSender,
   createUnconfiguredEmailSender,
 } = require("./emailSender");
-const { PasswordResetService } = require("./passwordResetService");
-const { ActivityService } = require("./activityService");
+
 const { createRequireAuth } = require("../middleware/requireAuth");
 
-const { NotificationRepository } = require("../repositories/notificationRepository");
+const {
+  NotificationRepository,
+} = require("../repositories/notificationRepository");
+
 const { NotificationService } = require("./notificationService");
 
 function createServices(pool, authConfig = {}) {
+  // Project
   const projectRepository = new ProjectRepository(pool);
   const projectService = new ProjectService(projectRepository);
 
+  // Activity
   const activityRepository = new ActivityRepository(pool);
   const activityService = new ActivityService({
     activityRepository,
     projectService,
   });
 
+  // Notifications
   const notificationRepository = new NotificationRepository(pool);
   const notificationService = new NotificationService({
     notificationRepository,
-});
+  });
 
+  // Comments
   const commentRepository = new CommentRepository(pool);
   const commentService = new CommentService({
     commentRepository,
     projectService,
   });
 
+  // Tasks and categories
   const taskRepository = new TaskRepository(pool);
+  const categoryRepository = new CategoryRepository(pool);
+
   const taskService = new TaskService({
     taskRepository,
     projectService,
     projectRepository,
+    categoryRepository,
     activityService,
   });
 
+  const categoryService = new CategoryService({
+    categoryRepository,
+    projectService,
+  });
+
+  // Assignments
   const assignmentService = new AssignmentService({
     projectService,
     projectRepository,
@@ -72,6 +101,7 @@ function createServices(pool, authConfig = {}) {
     activityService,
   });
 
+  // Authentication and audit
   const userRepository = new UserRepository(pool);
   const tokenRevocationRepository = new TokenRevocationRepository(pool);
 
@@ -85,9 +115,13 @@ function createServices(pool, authConfig = {}) {
     jwtExpiresIn: authConfig.jwtExpiresIn,
   });
 
-  const adminService = new AdminService({ userRepository, auditLog });
+  // Administration
+  const adminService = new AdminService({
+    userRepository,
+    auditLog,
+  });
 
-  // TEMPORARY email sender until the notification service can send email.
+  // Password reset
   const passwordResetService = new PasswordResetService({
     passwordResetRepository: new PasswordResetRepository(pool),
     userRepository,
@@ -97,9 +131,9 @@ function createServices(pool, authConfig = {}) {
         ? createUnconfiguredEmailSender()
         : createDevEmailSender(),
     resetUrlBase:
-      authConfig.passwordResetUrl
-      || process.env.PASSWORD_RESET_URL
-      || "http://localhost:5173/reset-password",
+      authConfig.passwordResetUrl ||
+      process.env.PASSWORD_RESET_URL ||
+      "http://localhost:5173/reset-password",
   });
 
   const requireAuth = createRequireAuth({
@@ -116,6 +150,7 @@ function createServices(pool, authConfig = {}) {
     assignmentService,
     authService,
     requireAuth,
+    categoryService,
     auditLog,
     adminService,
     passwordResetService,

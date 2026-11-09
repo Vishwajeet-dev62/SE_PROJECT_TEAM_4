@@ -88,6 +88,17 @@ function createDependencies() {
     },
   };
 
+  // Category repository mock
+  // Category 5 belongs to project 7.
+  const categoryRepository = {
+    async existsForProject(projectId, categoryId) {
+      return (
+        String(projectId) === "7" &&
+        String(categoryId) === "5"
+      );
+    },
+  };
+
   const taskRepository = {
     async create(input) {
       const id = String(nextId++);
@@ -125,23 +136,47 @@ function createDependencies() {
 
     async listForProject(projectId, pagination) {
       return [...tasks.values()]
-        .filter(
-          (task) =>
-            task.projectId === String(projectId) &&
-            !task.deletedAt,
-        )
+        .filter((task) => {
+          if (
+            task.projectId !== String(projectId) ||
+            task.deletedAt
+          ) {
+            return false;
+          }
+
+          if (
+            pagination.categoryId !== undefined &&
+            String(task.categoryId) !== String(pagination.categoryId)
+          ) {
+            return false;
+          }
+
+          return true;
+        })
         .slice(
           pagination.offset,
           pagination.offset + pagination.limit,
         );
     },
 
-    async countForProject(projectId) {
-      return [...tasks.values()].filter(
-        (task) =>
-          task.projectId === String(projectId) &&
-          !task.deletedAt,
-      ).length;
+    async countForProject(projectId, filters = {}) {
+      return [...tasks.values()].filter((task) => {
+        if (
+          task.projectId !== String(projectId) ||
+          task.deletedAt
+        ) {
+          return false;
+        }
+
+        if (
+          filters.categoryId !== undefined &&
+          String(task.categoryId) !== String(filters.categoryId)
+        ) {
+          return false;
+        }
+
+        return true;
+      }).length;
     },
 
     async update(id, changes) {
@@ -209,6 +244,7 @@ function createDependencies() {
     taskRepository,
     projectService,
     projectRepository,
+    categoryRepository,
     activityService,
   });
 
@@ -219,6 +255,10 @@ function createDependencies() {
     activityEvents,
   };
 }
+
+// --------------------------------------------------
+// Existing task creation tests
+// --------------------------------------------------
 
 test("create derives creator and project from authenticated context", async () => {
   const { service, tasks } = createDependencies();
@@ -285,6 +325,10 @@ test("create rejects client-controlled creator and project fields", async () => 
     (error) => error.code === "VALIDATION_ERROR",
   );
 });
+
+// --------------------------------------------------
+// Existing task update and authorization tests
+// --------------------------------------------------
 
 test("task creator can update and the response reflects edit permission", async () => {
   const { service } = createDependencies();
@@ -373,6 +417,10 @@ test("outsiders cannot update tasks", async () => {
   );
 });
 
+// --------------------------------------------------
+// Existing deletion and listing tests
+// --------------------------------------------------
+
 test("delete soft-deletes a task and restore makes it active again", async () => {
   const { service } = createDependencies();
 
@@ -416,6 +464,10 @@ test("trash listing is limited to authorized project members", async () => {
     (error) => error.status === 403,
   );
 });
+
+// --------------------------------------------------
+// Existing activity logging tests
+// --------------------------------------------------
 
 test("task mutations record activity events", async () => {
   const { service, activityEvents } = createDependencies();
@@ -497,4 +549,148 @@ test("activity logging failures do not fail successful task operations", async (
   } finally {
     console.error = originalConsoleError;
   }
+});
+
+// --------------------------------------------------
+// New category integration tests
+// --------------------------------------------------
+
+test("create accepts a category belonging to the project", async () => {
+  const { service } = createDependencies();
+
+  const task = await service.create(
+    "7",
+    {
+      title: "Categorized task",
+      category_id: "5",
+    },
+    owner,
+  );
+
+  assert.equal(task.categoryId, "5");
+});
+
+test("create rejects a category that does not belong to the project", async () => {
+  const { service, tasks, activityEvents } = createDependencies();
+
+  await assert.rejects(
+    service.create(
+      "7",
+      {
+        title: "Invalid category task",
+        category_id: "99",
+      },
+      owner,
+    ),
+    (error) =>
+      error.status === 400 &&
+      error.code === "CATEGORY_NOT_IN_PROJECT",
+  );
+
+  assert.equal(tasks.size, 0);
+  assert.equal(activityEvents.length, 0);
+});
+
+test("update accepts a category belonging to the project", async () => {
+  const { service } = createDependencies();
+
+  const created = await service.create(
+    "7",
+    { title: "Task without category" },
+    owner,
+  );
+
+  const updated = await service.update(
+    created.id,
+    { category_id: "5" },
+    owner,
+  );
+
+  assert.equal(updated.categoryId, "5");
+});
+
+test("update rejects a category that does not belong to the project", async () => {
+  const { service, tasks } = createDependencies();
+
+  const created = await service.create(
+    "7",
+    { title: "Task" },
+    owner,
+  );
+
+  await assert.rejects(
+    service.update(
+      created.id,
+      { category_id: "99" },
+      owner,
+    ),
+    (error) =>
+      error.status === 400 &&
+      error.code === "CATEGORY_NOT_IN_PROJECT",
+  );
+
+  assert.equal(tasks.get(created.id).categoryId, null);
+});
+
+test("update allows clearing a task category with null", async () => {
+  const { service } = createDependencies();
+
+  const created = await service.create(
+    "7",
+    {
+      title: "Categorized task",
+      category_id: "5",
+    },
+    owner,
+  );
+
+  const updated = await service.update(
+    created.id,
+    { category_id: null },
+    owner,
+  );
+
+  assert.equal(updated.categoryId, null);
+});
+
+test("list filters tasks by category", async () => {
+  const { service } = createDependencies();
+
+  await service.create(
+    "7",
+    {
+      title: "Category five task",
+      category_id: "5",
+    },
+    owner,
+  );
+
+  await service.create(
+    "7",
+    { title: "Uncategorized task" },
+    owner,
+  );
+
+  const result = await service.list(
+    "7",
+    owner,
+    { categoryId: "5" },
+  );
+
+  assert.equal(result.data.length, 1);
+  assert.equal(result.data[0].title, "Category five task");
+  assert.equal(result.pagination.total, 1);
+});
+
+test("list rejects an invalid category filter", async () => {
+  const { service } = createDependencies();
+
+  await assert.rejects(
+    service.list(
+      "7",
+      owner,
+      { categoryId: "invalid" },
+    ),
+    (error) => error.code === "VALIDATION_ERROR",
+  );
 });

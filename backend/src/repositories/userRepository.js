@@ -32,8 +32,10 @@ class UserRepository {
 
   async findByEmail(email) {
     const [rows] = await this.pool.execute(
-      `SELECT id, name, email, password_hash, role, active,
-              failed_attempts, locked_until, created_at, updated_at
+      `SELECT id, name, email, password_hash, role,
+              is_active AS active,
+              failed_login_attempts AS failed_attempts,
+              locked_until, created_at, updated_at
        FROM users
        WHERE email = ?`,
       [email],
@@ -44,8 +46,10 @@ class UserRepository {
 
   async findById(id) {
     const [rows] = await this.pool.execute(
-      `SELECT id, name, email, password_hash, role, active,
-              failed_attempts, locked_until, created_at, updated_at
+      `SELECT id, name, email, password_hash, role,
+              is_active AS active,
+              failed_login_attempts AS failed_attempts,
+              locked_until, created_at, updated_at
        FROM users
        WHERE id = ?`,
       [id],
@@ -71,11 +75,11 @@ class UserRepository {
   async recordFailedLogin(id, maxAttempts = 5, lockoutMinutes = 15) {
     await this.pool.execute(
       `UPDATE users
-       SET failed_attempts = CASE
+       SET failed_login_attempts = CASE
              WHEN locked_until IS NOT NULL
                   AND locked_until <= UTC_TIMESTAMP(3)
                THEN 1
-             ELSE failed_attempts + 1
+             ELSE failed_login_attempts + 1
            END,
            locked_until = CASE
              WHEN (
@@ -83,7 +87,7 @@ class UserRepository {
                  WHEN locked_until IS NOT NULL
                       AND locked_until <= UTC_TIMESTAMP(3)
                    THEN 1
-                 ELSE failed_attempts + 1
+                 ELSE failed_login_attempts + 1
                END
              ) >= ?
                THEN DATE_ADD(
@@ -103,7 +107,7 @@ class UserRepository {
   async resetFailedLogins(id) {
     await this.pool.execute(
       `UPDATE users
-       SET failed_attempts = 0,
+       SET failed_login_attempts = 0,
            locked_until = NULL
        WHERE id = ?`,
       [id],

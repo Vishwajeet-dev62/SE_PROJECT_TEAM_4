@@ -1,8 +1,11 @@
 
+"use strict";
+
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
+
 const {
   MIGRATION_DEPENDENCIES,
   runMigrations,
@@ -25,60 +28,108 @@ test("Member 2 migrations have stable order and explicit external dependencies",
     "009_align_schema_column_names.sql",
     "010_align_project_member_column_name.sql",
     "011_add_project_to_audit_logs.sql",
-    "012_create_notifications.sql"
+    "012_create_notifications.sql",
+    "013_create_categories.sql",
   ]);
 
   assert.equal(MIGRATION_DEPENDENCIES["001_users.sql"], undefined);
-  assert.deepEqual(MIGRATION_DEPENDENCIES["002_projects.sql"], ["users"]);
-  assert.deepEqual(MIGRATION_DEPENDENCIES["003_project_members.sql"], [
-    "users",
-    "projects",
-  ]);
-  assert.deepEqual(MIGRATION_DEPENDENCIES["004_tasks.sql"], [
-    "users",
-    "projects",
-  ]);
-  assert.deepEqual(MIGRATION_DEPENDENCIES["005_comments.sql"], [
-    "users",
-    "tasks",
-  ]);
-  assert.deepEqual(MIGRATION_DEPENDENCIES["006_audit_logs.sql"], ["users"]);
-  assert.deepEqual(MIGRATION_DEPENDENCIES["007_password_reset_tokens.sql"], [
-    "users",
-  ]);
-  assert.deepEqual(MIGRATION_DEPENDENCIES["008_revoked_tokens.sql"], ["users"]);
+
   assert.deepEqual(
-  MIGRATION_DEPENDENCIES["009_align_schema_column_names.sql"],
-  ["projects"],
+    MIGRATION_DEPENDENCIES["002_projects.sql"],
+    ["users"],
   );
+
   assert.deepEqual(
-  MIGRATION_DEPENDENCIES["010_align_project_member_column_name.sql"],
-  ["project_members"],
+    MIGRATION_DEPENDENCIES["003_project_members.sql"],
+    ["users", "projects"],
   );
+
   assert.deepEqual(
-  MIGRATION_DEPENDENCIES["011_add_project_to_audit_logs.sql"],
-  ["users", "projects"],
+    MIGRATION_DEPENDENCIES["004_tasks.sql"],
+    ["users", "projects"],
+  );
+
+  assert.deepEqual(
+    MIGRATION_DEPENDENCIES["005_comments.sql"],
+    ["users", "tasks"],
+  );
+
+  assert.deepEqual(
+    MIGRATION_DEPENDENCIES["006_audit_logs.sql"],
+    ["users"],
+  );
+
+  assert.deepEqual(
+    MIGRATION_DEPENDENCIES["007_password_reset_tokens.sql"],
+    ["users"],
+  );
+
+  assert.deepEqual(
+    MIGRATION_DEPENDENCIES["008_revoked_tokens.sql"],
+    ["users"],
+  );
+
+  assert.deepEqual(
+    MIGRATION_DEPENDENCIES["009_align_schema_column_names.sql"],
+    ["projects"],
+  );
+
+  assert.deepEqual(
+    MIGRATION_DEPENDENCIES["010_align_project_member_column_name.sql"],
+    ["project_members"],
+  );
+
+  assert.deepEqual(
+    MIGRATION_DEPENDENCIES["011_add_project_to_audit_logs.sql"],
+    ["users", "projects"],
+  );
+
+  assert.deepEqual(
+    MIGRATION_DEPENDENCIES["012_create_notifications.sql"],
+    ["users"],
+  );
+
+  assert.deepEqual(
+    MIGRATION_DEPENDENCIES["013_create_categories.sql"],
+    ["projects", "tasks"],
   );
 });
 
 test("migration 009 renames the projects archive column", () => {
   const migration = readMigration("009_align_schema_column_names.sql");
-  assert.match(migration, /RENAME COLUMN archived TO is_archived/);
+
+  assert.match(
+    migration,
+    /RENAME COLUMN archived TO is_archived/,
+  );
 });
 
 test("migration 010 renames the project membership role column", () => {
-  const migration = readMigration("010_align_project_member_column_name.sql");
-  assert.match(migration, /RENAME COLUMN member_role TO project_role/);
+  const migration = readMigration(
+    "010_align_project_member_column_name.sql",
+  );
+
+  assert.match(
+    migration,
+    /RENAME COLUMN member_role TO project_role/,
+  );
 });
 
 test("migration 011 associates audit logs with projects", () => {
-  const migration = readMigration("011_add_project_to_audit_logs.sql");
+  const migration = readMigration(
+    "011_add_project_to_audit_logs.sql",
+  );
 
-  assert.match(migration, /ADD COLUMN project_id BIGINT UNSIGNED NULL/);
+  assert.match(
+    migration,
+    /ADD COLUMN project_id BIGINT UNSIGNED NULL/,
+  );
+
   assert.match(
     migration,
     /FOREIGN KEY \(project_id\) REFERENCES projects \(id\)/,
   );
+
   assert.match(
     migration,
     /idx_audit_logs_project_created \(project_id, created_at, id\)/,
@@ -90,34 +141,89 @@ test("project, membership, and comment schemas use InnoDB and contract keys", ()
   const members = readMigration("003_project_members.sql");
   const comments = readMigration("005_comments.sql");
 
-  assert.match(projects, /id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT/);
-  assert.match(projects, /FOREIGN KEY \(owner_id\) REFERENCES users \(id\)/);
+  assert.match(
+    projects,
+    /id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT/,
+  );
+
+  assert.match(
+    projects,
+    /FOREIGN KEY \(owner_id\) REFERENCES users \(id\)/,
+  );
+
   assert.match(projects, /ENGINE=InnoDB/);
 
-  assert.match(members, /PRIMARY KEY \(project_id, user_id\)/);
-  assert.match(members, /ENUM\('OWNER', 'MEMBER'\)/);
+  assert.match(
+    members,
+    /PRIMARY KEY \(project_id, user_id\)/,
+  );
+
+  assert.match(
+    members,
+    /ENUM\('OWNER', 'MEMBER'\)/,
+  );
+
   assert.match(members, /ENGINE=InnoDB/);
 
-  assert.match(comments, /FOREIGN KEY \(task_id\) REFERENCES tasks \(id\)/);
-  assert.match(comments, /FOREIGN KEY \(author_id\) REFERENCES users \(id\)/);
+  assert.match(
+    comments,
+    /FOREIGN KEY \(task_id\) REFERENCES tasks \(id\)/,
+  );
+
+  assert.match(
+    comments,
+    /FOREIGN KEY \(author_id\) REFERENCES users \(id\)/,
+  );
+
   assert.match(comments, /ENGINE=InnoDB/);
 });
 
 test("task schema uses InnoDB, project ownership keys, and task query indexes", () => {
   const tasks = readMigration("004_tasks.sql");
 
-  assert.match(tasks, /id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT/);
-  assert.match(tasks, /project_id BIGINT UNSIGNED NOT NULL/);
-  assert.match(tasks, /created_by BIGINT UNSIGNED NOT NULL/);
+  assert.match(
+    tasks,
+    /id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT/,
+  );
+
+  assert.match(
+    tasks,
+    /project_id BIGINT UNSIGNED NOT NULL/,
+  );
+
+  assert.match(
+    tasks,
+    /created_by BIGINT UNSIGNED NOT NULL/,
+  );
+
   assert.match(tasks, /FOREIGN KEY \(project_id\)/);
   assert.match(tasks, /REFERENCES projects\(id\)/);
+
   assert.match(tasks, /FOREIGN KEY \(created_by\)/);
   assert.match(tasks, /REFERENCES users\(id\)/);
+
   assert.match(tasks, /FOREIGN KEY \(assigned_to\)/);
-  assert.match(tasks, /ENUM\('TODO', 'IN_PROGRESS', 'DONE'\)/);
-  assert.match(tasks, /ENUM\('LOW', 'MEDIUM', 'HIGH'\)/);
-  assert.match(tasks, /KEY idx_tasks_project_status \(project_id, status\)/);
-  assert.match(tasks, /KEY idx_tasks_deleted_at \(deleted_at\)/);
+
+  assert.match(
+    tasks,
+    /ENUM\('TODO', 'IN_PROGRESS', 'DONE'\)/,
+  );
+
+  assert.match(
+    tasks,
+    /ENUM\('LOW', 'MEDIUM', 'HIGH'\)/,
+  );
+
+  assert.match(
+    tasks,
+    /KEY idx_tasks_project_status \(project_id, status\)/,
+  );
+
+  assert.match(
+    tasks,
+    /KEY idx_tasks_deleted_at \(deleted_at\)/,
+  );
+
   assert.match(tasks, /ENGINE=InnoDB/);
 });
 
@@ -152,11 +258,19 @@ test("migration runner applies sorted files once under a database lock", async (
       }
 
       if (sql.includes("information_schema.tables")) {
-        return [[{ table_count: Number(state.tables.has(values[0])) }]];
+        return [[
+          {
+            table_count: Number(
+              state.tables.has(values[0]),
+            ),
+          },
+        ]];
       }
 
-      if (sql.includes("SELECT migration")) {
-        return [[...state.applied].map((migration) => ({ migration }))];
+      if (sql.includes("SELECT version")) {
+        return [[
+          ...state.applied,
+        ].map((version) => ({ version }))];
       }
 
       if (sql.includes("INSERT INTO schema_migrations")) {
@@ -183,7 +297,10 @@ test("migration runner applies sorted files once under a database lock", async (
   await runMigrations(pool, migrationDirectory);
 
   const expectedSql = filenames.map((filename) =>
-    fs.readFileSync(path.join(migrationDirectory, filename), "utf8"),
+    fs.readFileSync(
+      path.join(migrationDirectory, filename),
+      "utf8",
+    ),
   );
 
   assert.deepEqual(state.executed, expectedSql);
@@ -222,11 +339,19 @@ test("migration runner skips migrations that have already been applied", async (
       }
 
       if (sql.includes("information_schema.tables")) {
-        return [[{ table_count: Number(state.tables.has(values[0])) }]];
+        return [[
+          {
+            table_count: Number(
+              state.tables.has(values[0]),
+            ),
+          },
+        ]];
       }
 
-      if (sql.includes("SELECT migration")) {
-        return [[...state.applied].map((migration) => ({ migration }))];
+      if (sql.includes("SELECT version")) {
+        return [[
+          ...state.applied,
+        ].map((version) => ({ version }))];
       }
 
       throw new Error(`Unexpected migration query: ${sql}`);
@@ -253,7 +378,11 @@ test("migration runner skips migrations that have already been applied", async (
 
 test("migration runner reports missing member-owned tables without applying schema", async () => {
   const state = {
-    tables: new Set(["users", "projects", "project_members"]),
+    tables: new Set([
+      "users",
+      "projects",
+      "project_members",
+    ]),
     applied: new Set([
       "001_users.sql",
       "002_projects.sql",
@@ -276,11 +405,19 @@ test("migration runner reports missing member-owned tables without applying sche
       }
 
       if (sql.includes("information_schema.tables")) {
-        return [[{ table_count: Number(state.tables.has(values[0])) }]];
+        return [[
+          {
+            table_count: Number(
+              state.tables.has(values[0]),
+            ),
+          },
+        ]];
       }
 
-      if (sql.includes("SELECT migration")) {
-        return [[...state.applied].map((migration) => ({ migration }))];
+      if (sql.includes("SELECT version")) {
+        return [[
+          ...state.applied,
+        ].map((version) => ({ version }))];
       }
 
       if (sql.includes("INSERT INTO schema_migrations")) {
@@ -313,6 +450,42 @@ test("migration runner reports missing member-owned tables without applying sche
   assert.equal(state.lockReleased, true);
 });
 
+test("migration 013 creates project-scoped categories and enforces task ownership", () => {
+  const migration = readMigration("013_create_categories.sql");
+
+  assert.match(migration, /CREATE TABLE categories/i);
+
+  assert.match(
+    migration,
+    /project_id BIGINT UNSIGNED NOT NULL/i,
+  );
+
+  assert.match(
+    migration,
+    /name VARCHAR\(80\) NOT NULL/i,
+  );
+
+  assert.match(
+    migration,
+    /UNIQUE KEY uq_categories_project_name \(project_id, name\)/i,
+  );
+
+  assert.match(
+    migration,
+    /UNIQUE KEY uq_categories_project_id \(project_id, id\)/i,
+  );
+
+  assert.match(
+    migration,
+    /FOREIGN KEY \(project_id, category_id\)\s*REFERENCES categories\(project_id, id\)/i,
+  );
+
+  assert.match(migration, /ENGINE=InnoDB/i);
+});
+
 function readMigration(filename) {
-  return fs.readFileSync(path.join(migrationDirectory, filename), "utf8");
+  return fs.readFileSync(
+    path.join(migrationDirectory, filename),
+    "utf8",
+  );
 }
