@@ -1,4 +1,3 @@
-
 "use strict";
 
 const express = require("express");
@@ -20,6 +19,7 @@ const { createProjectRouter } = require("./routes/projectRoutes");
 const { createAdminRouter } = require("./routes/adminRoutes");
 const { createAssignmentRouter } = require("./routes/assignmentRoutes");
 const { createAuthRouter } = require("./routes/authRoutes");
+
 const {
   createPasswordResetRouter,
 } = require("./routes/passwordResetRoutes");
@@ -44,6 +44,7 @@ function createApp({
   projectService,
   commentService,
   categoryService,
+  tagService,
   taskService,
   assignmentService,
   activityService,
@@ -100,7 +101,7 @@ function createApp({
     );
   }
 
-  // Project routes, including categories
+  // Project routes, including categories and tags
   if (projectService) {
     app.use(
       "/api/v1/projects",
@@ -108,6 +109,7 @@ function createApp({
         projectService,
         requireAuth,
         categoryService,
+        tagService,
       }),
     );
   }

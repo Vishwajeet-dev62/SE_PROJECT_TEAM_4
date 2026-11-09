@@ -11,6 +11,7 @@ const MAX_TITLE_LENGTH = 150;
 const MUTABLE_FIELDS = new Set([
   "assigned_to",
   "category_id",
+  "tagIds",
   "title",
   "description",
   "status",
@@ -77,6 +78,36 @@ function validateTaskBody(body, { partial = false } = {}) {
         field: key,
         message: "Unknown or immutable field",
       });
+    }
+  }
+
+    if (input.tagIds !== undefined) {
+    if (!Array.isArray(input.tagIds)) {
+      errors.push({
+        field: "tagIds",
+        message: "tagIds must be an array",
+      });
+    } else if (input.tagIds.length > 50) {
+      errors.push({
+        field: "tagIds",
+        message: "A task cannot have more than 50 tags",
+      });
+    } else {
+      const parsedTagIds = input.tagIds.map((id) =>
+        parsePositiveInteger(id, null),
+      );
+
+      if (parsedTagIds.some((id) => id === null)) {
+        errors.push({
+          field: "tagIds",
+          message: "Every tag ID must be a positive integer",
+        });
+      } else if (new Set(parsedTagIds).size !== parsedTagIds.length) {
+        errors.push({
+          field: "tagIds",
+          message: "Duplicate tag IDs are not allowed",
+        });
+      }
     }
   }
 

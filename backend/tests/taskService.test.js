@@ -75,6 +75,17 @@ function createDependencies() {
     },
   };
 
+
+  // Tag repository mock
+  // Tags 1 and 2 belong to project 7.
+  const tagRepository = {
+    async existsForProject(projectId, tagId) {
+      return (
+        String(projectId) === "7" &&
+        ["1", "2"].includes(String(tagId))
+      );
+    },
+  };
   const projectRepository = {
     async userExists(id) {
       return ["10", "20", "30"].includes(String(id));
@@ -245,6 +256,7 @@ function createDependencies() {
     projectService,
     projectRepository,
     categoryRepository,
+    tagRepository,
     activityService,
   });
 
@@ -690,6 +702,96 @@ test("list rejects an invalid category filter", async () => {
       "7",
       owner,
       { categoryId: "invalid" },
+    ),
+    (error) => error.code === "VALIDATION_ERROR",
+  );
+});
+
+test("create accepts multiple tags belonging to the project", async () => {
+  const { service } = createDependencies();
+
+  const task = await service.create(
+    "7",
+    {
+      title: "Tagged task",
+      tagIds: ["1", "2"],
+    },
+    owner,
+  );
+
+  assert.equal(task.title, "Tagged task");
+});
+
+test("create rejects a tag that does not belong to the project", async () => {
+  const { service, tasks, activityEvents } = createDependencies();
+
+  await assert.rejects(
+    service.create(
+      "7",
+      {
+        title: "Invalid tagged task",
+        tagIds: ["99"],
+      },
+      owner,
+    ),
+    (error) =>
+      error.status === 400 &&
+      error.code === "TAG_NOT_IN_PROJECT",
+  );
+
+  assert.equal(tasks.size, 0);
+  assert.equal(activityEvents.length, 0);
+});
+
+test("update accepts tag assignments", async () => {
+  const { service } = createDependencies();
+
+  const created = await service.create(
+    "7",
+    { title: "Task" },
+    owner,
+  );
+
+  const updated = await service.update(
+    created.id,
+    { tagIds: ["1", "2"] },
+    owner,
+  );
+
+  assert.equal(updated.title, "Task");
+});
+
+test("update rejects a tag from another project", async () => {
+  const { service, tasks } = createDependencies();
+
+  const created = await service.create(
+    "7",
+    { title: "Task" },
+    owner,
+  );
+
+  await assert.rejects(
+    service.update(
+      created.id,
+      { tagIds: ["99"] },
+      owner,
+    ),
+    (error) =>
+      error.status === 400 &&
+      error.code === "TAG_NOT_IN_PROJECT",
+  );
+
+  assert.equal(tasks.get(created.id).title, "Task");
+});
+
+test("list rejects an invalid tag filter", async () => {
+  const { service } = createDependencies();
+
+  await assert.rejects(
+    service.list(
+      "7",
+      owner,
+      { tagId: "invalid" },
     ),
     (error) => error.code === "VALIDATION_ERROR",
   );

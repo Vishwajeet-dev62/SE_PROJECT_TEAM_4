@@ -30,6 +30,7 @@ test("Member 2 migrations have stable order and explicit external dependencies",
     "011_add_project_to_audit_logs.sql",
     "012_create_notifications.sql",
     "013_create_categories.sql",
+    "014_create_tags.sql",
   ]);
 
   assert.equal(MIGRATION_DEPENDENCIES["001_users.sql"], undefined);
@@ -91,6 +92,11 @@ test("Member 2 migrations have stable order and explicit external dependencies",
 
   assert.deepEqual(
     MIGRATION_DEPENDENCIES["013_create_categories.sql"],
+    ["projects", "tasks"],
+  );
+
+  assert.deepEqual(
+    MIGRATION_DEPENDENCIES["014_create_tags.sql"],
     ["projects", "tasks"],
   );
 });
@@ -176,6 +182,31 @@ test("project, membership, and comment schemas use InnoDB and contract keys", ()
   );
 
   assert.match(comments, /ENGINE=InnoDB/);
+});
+
+test("migration 014 creates project-scoped tags and task relationships", () => {
+  const migration = readMigration("014_create_tags.sql");
+
+  assert.match(migration, /CREATE TABLE tags/i);
+  assert.match(migration, /CREATE TABLE task_tags/i);
+
+  assert.match(
+    migration,
+    /UNIQUE KEY uq_tasks_project_id_id \(project_id, id\)/i,
+  );
+
+  assert.match(
+    migration,
+    /FOREIGN KEY \(project_id, task_id\)\s*REFERENCES tasks\(project_id, id\)/i,
+  );
+
+  assert.match(
+    migration,
+    /FOREIGN KEY \(project_id, tag_id\)\s*REFERENCES tags\(project_id, id\)/i,
+  );
+
+  assert.match(migration, /UNIQUE KEY uq_tags_project_name/i);
+  assert.match(migration, /ENGINE=InnoDB/i);
 });
 
 test("task schema uses InnoDB, project ownership keys, and task query indexes", () => {

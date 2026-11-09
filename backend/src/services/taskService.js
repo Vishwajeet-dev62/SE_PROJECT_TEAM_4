@@ -18,17 +18,20 @@ class TaskService {
     projectService,
     projectRepository,
     categoryRepository,
+    tagRepository,
     activityService,
   }) {
     this.taskRepository = taskRepository;
     this.projectService = projectService;
     this.projectRepository = projectRepository;
     this.categoryRepository = categoryRepository;
+    this.tagRepository = tagRepository;
     this.activityService = activityService;
   }
 
   async list(projectIdInput, userInput, query = {}) {
     const user = requireUser(userInput);
+
     const project = await this.projectService.getProject(
       projectIdInput,
       user,
@@ -59,6 +62,7 @@ class TaskService {
 
   async get(taskIdInput, userInput) {
     const user = requireUser(userInput);
+
     const { task, project } = await this.projectService.authorizeTask(
       taskIdInput,
       user,
@@ -75,6 +79,7 @@ class TaskService {
 
   async create(projectIdInput, body, userInput) {
     const user = requireUser(userInput);
+
     const project = await this.projectService.getProject(
       projectIdInput,
       user,
@@ -90,12 +95,14 @@ class TaskService {
 
     await this.validateAssignee(input.assigned_to, project);
     await this.validateCategory(input.category_id, project);
+    await this.validateTags(input.tagIds, project);
 
     const taskId = await this.taskRepository.create({
       projectId: project.id,
       createdBy: user.id,
       assignedTo: input.assigned_to ?? null,
       categoryId: input.category_id ?? null,
+      tagIds: input.tagIds ?? [],
       title: input.title.trim(),
       description: input.description ?? null,
       status: input.status ?? "TODO",
@@ -170,8 +177,12 @@ class TaskService {
       await this.validateCategory(input.category_id, project);
     }
 
-    // Map API request fields (snake_case) to repository fields (camelCase).
-    // Only fields explicitly included in the request are updated.
+    if (Object.hasOwn(input, "tagIds")) {
+      await this.validateTags(input.tagIds, project);
+    }
+
+    // Map API request fields to repository fields.
+    // Only explicitly supplied fields are updated.
     const changes = {};
 
     const fieldMap = {
@@ -181,6 +192,7 @@ class TaskService {
       priority: "priority",
       assigned_to: "assignedTo",
       category_id: "categoryId",
+      tagIds: "tagIds",
       due_date: "dueDate",
     };
 
@@ -262,6 +274,7 @@ class TaskService {
 
   async listTrash(projectIdInput, userInput, query = {}) {
     const user = requireUser(userInput);
+
     const project = await this.projectService.getProject(
       projectIdInput,
       user,
@@ -387,6 +400,16 @@ class TaskService {
       filters.categoryId = String(id);
     }
 
+    if (query.tagId !== undefined && query.tagId !== "") {
+      const id = parsePositiveInteger(query.tagId, null);
+
+      if (id === null) {
+        throw validationError("Invalid tagId filter");
+      }
+
+      filters.tagId = String(id);
+    }
+
     if (query.search !== undefined && query.search !== "") {
       if (
         typeof query.search !== "string" ||
@@ -432,6 +455,37 @@ class TaskService {
         "CATEGORY_NOT_IN_PROJECT",
         "The selected category does not belong to this project",
       );
+    }
+  }
+
+  async validateTags(tagIds, project) {
+    if (tagIds === undefined) {
+      return;
+    }
+
+    if (!this.tagRepository) {
+      throw new ApiError(
+        503,
+        "TAG_SERVICE_UNAVAILABLE",
+        "Tag functionality is not configured",
+      );
+    }
+
+    for (const tagId of tagIds) {
+      const id = parseId(tagId, "tagIds");
+
+      const exists = await this.tagRepository.existsForProject(
+        project.id,
+        id,
+      );
+
+      if (!exists) {
+        throw new ApiError(
+          400,
+          "TAG_NOT_IN_PROJECT",
+          `Tag ${id} does not belong to this project`,
+        );
+      }
     }
   }
 
