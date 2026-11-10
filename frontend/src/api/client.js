@@ -1,3 +1,4 @@
+
 const DEFAULT_API_BASE_URL = 'http://localhost:3000/api/v1'
 
 export class ApiRequestError extends Error {
@@ -20,6 +21,7 @@ export function createApiClient({
 
   async function request(path, { method = 'GET', body, query } = {}) {
     const url = new URL(`${normalizedBaseUrl}${path}`)
+
     for (const [key, value] of Object.entries(query || {})) {
       if (value !== undefined && value !== null && value !== '') {
         url.searchParams.set(key, String(value))
@@ -28,14 +30,17 @@ export function createApiClient({
 
     const headers = { Accept: 'application/json' }
     const accessToken = await tokenProvider()
+
     if (accessToken) {
       headers.Authorization = `Bearer ${accessToken}`
     }
+
     if (body !== undefined) {
       headers['Content-Type'] = 'application/json'
     }
 
     let response
+
     try {
       response = await fetchImpl(url, {
         method,
@@ -57,6 +62,7 @@ export function createApiClient({
     }
 
     let payload
+
     try {
       payload = await response.json()
     } catch (error) {
@@ -73,7 +79,9 @@ export function createApiClient({
       if (response.status === 401) {
         onUnauthorized()
       }
+
       const apiError = payload?.error
+
       throw new ApiRequestError(
         response.status,
         apiError?.code || 'REQUEST_FAILED',
@@ -86,59 +94,241 @@ export function createApiClient({
   }
 
   return {
-    register: (body) => request('/auth/register', { method: 'POST', body }),
-    login: (body) => request('/auth/login', { method: 'POST', body }),
-    logout: () => request('/auth/logout', { method: 'POST' }),
-    getCurrentUser: () => request('/auth/me'),
-    listProjects: (query) => request('/projects', { query }),
-    getProject: (id) => request(`/projects/${encodeURIComponent(id)}`),
-    createProject: (body) => request('/projects', { method: 'POST', body }),
-    updateProject: (id, body) => request(`/projects/${encodeURIComponent(id)}`, {
-      method: 'PATCH',
+    // --------------------------------
+    // Authentication
+    // --------------------------------
+
+    register: (body) => request('/auth/register', {
+      method: 'POST',
       body,
     }),
+
+    login: (body) => request('/auth/login', {
+      method: 'POST',
+      body,
+    }),
+
+    logout: () => request('/auth/logout', {
+      method: 'POST',
+    }),
+
+    getCurrentUser: () => request('/auth/me'),
+
+    // --------------------------------
+    // Projects
+    // --------------------------------
+
+    listProjects: (query) => request('/projects', { query }),
+
+    getProject: (id) => request(
+      `/projects/${encodeURIComponent(id)}`,
+    ),
+
+    createProject: (body) => request('/projects', {
+      method: 'POST',
+      body,
+    }),
+
+    updateProject: (id, body) => request(
+      `/projects/${encodeURIComponent(id)}`,
+      {
+        method: 'PATCH',
+        body,
+      },
+    ),
+
     archiveProject: (id) => request(
       `/projects/${encodeURIComponent(id)}/archive`,
-      { method: 'POST' },
+      {
+        method: 'POST',
+      },
     ),
+
+    // --------------------------------
+    // Project Members
+    // --------------------------------
+
     listMembers: (id, query) => request(
       `/projects/${encodeURIComponent(id)}/members`,
       { query },
     ),
+
     addMember: (id, userId) => request(
       `/projects/${encodeURIComponent(id)}/members`,
-      { method: 'POST', body: { userId } },
+      {
+        method: 'POST',
+        body: { userId },
+      },
     ),
+
     removeMember: (id, userId) => request(
       `/projects/${encodeURIComponent(id)}/members/${encodeURIComponent(userId)}`,
-      { method: 'DELETE' },
+      {
+        method: 'DELETE',
+      },
     ),
+
+    // --------------------------------
+    // Project Categories
+    // --------------------------------
+
+    listCategories: (projectId) => request(
+      `/projects/${encodeURIComponent(projectId)}/categories`,
+    ),
+
+    createCategory: (projectId, name) => request(
+      `/projects/${encodeURIComponent(projectId)}/categories`,
+      {
+        method: 'POST',
+        body: { name },
+      },
+    ),
+
+    updateCategory: (projectId, categoryId, name) => request(
+      `/projects/${encodeURIComponent(projectId)}/categories/${encodeURIComponent(categoryId)}`,
+      {
+        method: 'PATCH',
+        body: { name },
+      },
+    ),
+
+    deleteCategory: (projectId, categoryId) => request(
+      `/projects/${encodeURIComponent(projectId)}/categories/${encodeURIComponent(categoryId)}`,
+      {
+        method: 'DELETE',
+      },
+    ),
+
+    // --------------------------------
+    // Project Tags
+    // --------------------------------
+
+    listTags: (projectId) => request(
+      `/projects/${encodeURIComponent(projectId)}/tags`,
+    ),
+
+    createTag: (projectId, name) => request(
+      `/projects/${encodeURIComponent(projectId)}/tags`,
+      {
+        method: 'POST',
+        body: { name },
+      },
+    ),
+
+    updateTag: (projectId, tagId, name) => request(
+      `/projects/${encodeURIComponent(projectId)}/tags/${encodeURIComponent(tagId)}`,
+      {
+        method: 'PATCH',
+        body: { name },
+      },
+    ),
+
+    deleteTag: (projectId, tagId) => request(
+      `/projects/${encodeURIComponent(projectId)}/tags/${encodeURIComponent(tagId)}`,
+      {
+        method: 'DELETE',
+      },
+    ),
+
+    // --------------------------------
+    // Dashboard and Kanban Board
+    // --------------------------------
+
     getDashboard: (id) => request(
       `/projects/${encodeURIComponent(id)}/dashboard`,
     ),
+
     getBoard: (id, query) => request(
       `/projects/${encodeURIComponent(id)}/board`,
       { query },
     ),
+
+    // --------------------------------
+    // Task Management
+    // --------------------------------
+
+    listTasks: (projectId, query) => request(
+      `/projects/${encodeURIComponent(projectId)}/tasks`,
+      { query },
+    ),
+
+    createTask: (projectId, body) => request(
+      `/projects/${encodeURIComponent(projectId)}/tasks`,
+      {
+        method: 'POST',
+        body,
+      },
+    ),
+
+    getTask: (id) => request(
+      `/tasks/${encodeURIComponent(id)}`,
+    ),
+
+    updateTask: (id, body) => request(
+      `/tasks/${encodeURIComponent(id)}`,
+      {
+        method: 'PATCH',
+        body,
+      },
+    ),
+
+    deleteTask: (id) => request(
+      `/tasks/${encodeURIComponent(id)}`,
+      {
+        method: 'DELETE',
+      },
+    ),
+
+    listDeletedTasks: (projectId, query) => request(
+      `/projects/${encodeURIComponent(projectId)}/tasks/trash`,
+      { query },
+    ),
+
+    restoreTask: (id) => request(
+      `/tasks/${encodeURIComponent(id)}/restore`,
+      {
+        method: 'POST',
+      },
+    ),
+
+    updateTaskStatus: (id, status) => request(
+      `/tasks/${encodeURIComponent(id)}`,
+      {
+        method: 'PATCH',
+        body: { status },
+      },
+    ),
+
+    // --------------------------------
+    // Task Comments
+    // --------------------------------
+
     listComments: (taskId, query) => request(
       `/tasks/${encodeURIComponent(taskId)}/comments`,
       { query },
     ),
+
     createComment: (taskId, body) => request(
       `/tasks/${encodeURIComponent(taskId)}/comments`,
-      { method: 'POST', body: { body } },
+      {
+        method: 'POST',
+        body: { body },
+      },
     ),
+
     updateComment: (id, body) => request(
       `/comments/${encodeURIComponent(id)}`,
-      { method: 'PATCH', body: { body } },
+      {
+        method: 'PATCH',
+        body: { body },
+      },
     ),
+
     deleteComment: (id) => request(
       `/comments/${encodeURIComponent(id)}`,
-      { method: 'DELETE' },
-    ),
-    updateTaskStatus: (id, status) => request(
-      `/tasks/${encodeURIComponent(id)}`,
-      { method: 'PATCH', body: { status } },
+      {
+        method: 'DELETE',
+      },
     ),
   }
 }

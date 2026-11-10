@@ -97,7 +97,7 @@ function AuthScreen({ api, onAuthenticated }) {
             {isRegistering ? 'Sign in' : 'Create an account'}
           </button>
         </p>
-        <p className="form-hint">Your sign-in token is held in memory and is cleared when you sign out or close this page.</p>
+        <p className="form-hint">Your session is saved for this browser tab and cleared when you sign out or the session expires.</p>
       </div>
     </section>
   )
