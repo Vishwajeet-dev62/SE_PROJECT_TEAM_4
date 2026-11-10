@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react'
 import ProjectBoard from '../board/ProjectBoard'
 import ProjectDashboard from '../dashboard/ProjectDashboard'
 import ProjectMembers from './ProjectMembers'
+import ProjectTasks from '../tasks/ProjectTasks'
 
 const VIEWS = [
   { id: 'dashboard', label: 'Overview' },
+  { id: 'tasks', label: 'Tasks' },
   { id: 'board', label: 'Board' },
   { id: 'members', label: 'Members' },
 ]
@@ -159,6 +161,9 @@ function ProjectWorkspace({ api, projectId, onBack }) {
 
       {view === 'dashboard' && (
         <ProjectDashboard api={api} projectId={project.id} />
+      )}
+      {view === 'tasks' && (
+        <ProjectTasks api={api} project={project} />
       )}
       {view === 'board' && (
         <ProjectBoard api={api} project={project} />
