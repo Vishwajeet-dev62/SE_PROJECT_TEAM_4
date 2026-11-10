@@ -39,6 +39,8 @@ function ProjectTasks({ api, project }) {
   const [tasks, setTasks] = useState([])
   const [categories, setCategories] = useState([])
   const [tags, setTags] = useState([])
+  const [members, setMembers] = useState([])
+  const [assigningTaskId, setAssigningTaskId] = useState(null)
 
   const [pagination, setPagination] = useState({
     page: 1,
@@ -53,6 +55,7 @@ function ProjectTasks({ api, project }) {
   const [priorityFilter, setPriorityFilter] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('')
   const [tagFilter, setTagFilter] = useState('')
+  const [assigneeFilter, setAssigneeFilter] = useState('')
   const [showTrash, setShowTrash] = useState(false)
 
   const [loading, setLoading] = useState(true)
@@ -87,6 +90,31 @@ function ProjectTasks({ api, project }) {
     }
   }, [api, projectId])
 
+  const loadMembers = useCallback(async () => {
+    try {
+      const firstResponse = await api.listMembers(projectId, {
+        page: 1,
+        limit: 20,
+      })
+
+      const allMembers = [...(firstResponse.data || [])]
+      const totalPages = firstResponse.pagination?.totalPages || 1
+
+      for (let currentPage = 2; currentPage <= totalPages; currentPage += 1) {
+        const response = await api.listMembers(projectId, {
+          page: currentPage,
+          limit: 20,
+        })
+
+        allMembers.push(...(response.data || []))
+      }
+
+      setMembers(allMembers)
+    } catch (loadError) {
+      setError(getErrorMessage(loadError))
+    }
+  }, [api, projectId])
+
   const loadTasks = useCallback(async () => {
     setLoading(true)
     setError('')
@@ -102,6 +130,7 @@ function ProjectTasks({ api, project }) {
       if (priorityFilter) query.priority = priorityFilter
       if (categoryFilter) query.categoryId = categoryFilter
       if (tagFilter) query.tagId = tagFilter
+      if (assigneeFilter) query.assignedTo = assigneeFilter
 
       const response = showTrash
         ? await api.listDeletedTasks(projectId, {
@@ -135,6 +164,7 @@ function ProjectTasks({ api, project }) {
     priorityFilter,
     categoryFilter,
     tagFilter,
+    assigneeFilter,
     showTrash,
   ])
 
@@ -155,6 +185,24 @@ function ProjectTasks({ api, project }) {
     cancelled = true
   }
 }, [loadMetadata])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function run() {
+      await Promise.resolve()
+
+      if (!cancelled) {
+        await loadMembers()
+      }
+    }
+
+    void run()
+
+    return () => {
+      cancelled = true
+    }
+  }, [loadMembers])
 
 useEffect(() => {
   let cancelled = false
@@ -320,6 +368,37 @@ useEffect(() => {
       await loadTasks()
     } catch (updateError) {
       setError(getErrorMessage(updateError))
+    }
+  }
+
+  async function changeAssignee(task, nextAssigneeId) {
+    if (archived || assigningTaskId === task.id) return
+
+    const currentAssigneeId = task.assignedTo == null
+      ? ''
+      : String(task.assignedTo)
+
+    if (currentAssigneeId === nextAssigneeId) return
+
+    setAssigningTaskId(task.id)
+    setError('')
+    setNotice('')
+
+    try {
+      await api.assignTask(
+        task.id,
+        nextAssigneeId === '' ? null : nextAssigneeId,
+      )
+      setNotice(
+        nextAssigneeId === ''
+          ? 'Task unassigned successfully.'
+          : 'Task assigned successfully.',
+      )
+      await loadTasks()
+    } catch (assignmentError) {
+      setError(getErrorMessage(assignmentError))
+    } finally {
+      setAssigningTaskId(null)
     }
   }
 
@@ -542,6 +621,23 @@ useEffect(() => {
               ))}
             </select>
           </label>
+
+          <label>
+            Assignee
+            <select
+              value={assigneeFilter}
+              onChange={(event) =>
+                changeFilter(setAssigneeFilter, event.target.value)
+              }
+            >
+              <option value="">All assignees</option>
+              {members.map((member) => (
+                <option key={member.id} value={member.id}>
+                  {member.name}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
       )}
 
@@ -586,6 +682,13 @@ useEffect(() => {
 
                   <span>{formatDate(task.dueDate)}</span>
 
+                  <span>
+                    Assigned to:{' '}
+                    {members.find(
+                      (member) => String(member.id) === String(task.assignedTo),
+                    )?.name || (task.assignedTo ? 'Project member' : 'Unassigned')}
+                  </span>
+
                   {task.categoryId && (
                     <span>
                       {categories.find(
@@ -618,6 +721,28 @@ useEffect(() => {
                   </button>
                 ) : (
                   <>
+                    <label>
+                      <span className="visually-hidden">
+                        Assign {task.title} to a project member
+                      </span>
+                      <select
+                        aria-label={`Assign ${task.title}`}
+                        value={task.assignedTo == null ? '' : String(task.assignedTo)}
+                        disabled={archived || assigningTaskId === task.id}
+                        onChange={(event) =>
+                          changeAssignee(task, event.target.value)
+                        }
+                      >
+                        <option value="">Unassigned</option>
+                        {members.map((member) => (
+                          <option key={member.id} value={member.id}>
+                            {member.name}
+                            {member.role === 'OWNER' ? ' (Owner)' : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
                     <label>
                       <span className="visually-hidden">
                         Change status for {task.title}

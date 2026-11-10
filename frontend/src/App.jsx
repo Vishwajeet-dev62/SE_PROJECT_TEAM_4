@@ -29,16 +29,19 @@ function App() {
   const [session, setSession] = useState(getStoredSession)
   const [projectId, setProjectId] = useState(null)
   const [authError, setAuthError] = useState('')
+
   const [isRestoringSession, setIsRestoringSession] = useState(
     () => Boolean(getStoredSession()?.accessToken),
   )
 
   const initialAccessToken = useRef(session?.accessToken || null)
-  const sessionRestoreStarted = useRef(false)
+  const sessionRestorePromise = useRef(null)
+
   const accessToken = session?.accessToken
 
   const api = useMemo(() => createApiClient({
     tokenProvider: () => accessToken || null,
+
     onUnauthorized: () => {
       clearStoredSession()
       setSession(null)
@@ -48,23 +51,30 @@ function App() {
 
   // Restore and validate a session saved before the page was refreshed.
   useEffect(() => {
-  const token = initialAccessToken.current
+    const token = initialAccessToken.current
 
-  if (!token || sessionRestoreStarted.current) {
-    return undefined
-  }
+    if (!token) {
+      setIsRestoringSession(false)
+      return undefined
+    }
 
-  sessionRestoreStarted.current = true
+    let active = true
 
-  let active = true
+    // Reuse the same request across React StrictMode effect executions.
+    if (!sessionRestorePromise.current) {
+      sessionRestorePromise.current = api.getCurrentUser()
+    }
 
-    api.getCurrentUser()
+    sessionRestorePromise.current
       .then((response) => {
         if (!active) return
 
         setSession((current) => (
           current?.accessToken === token
-            ? { accessToken: token, user: response.data.user }
+            ? {
+                accessToken: token,
+                user: response.data.user,
+              }
             : current
         ))
       })
@@ -72,12 +82,15 @@ function App() {
         if (!active) return
 
         clearStoredSession()
+
         setSession((current) => (
           current?.accessToken === token ? null : current
         ))
       })
       .finally(() => {
-        if (active) setIsRestoringSession(false)
+        if (active) {
+          setIsRestoringSession(false)
+        }
       })
 
     return () => {
@@ -90,6 +103,7 @@ function App() {
 
     try {
       await api.logout()
+
       clearStoredSession()
       setSession(null)
       setProjectId(null)
@@ -102,7 +116,10 @@ function App() {
 
   function handleAuthenticated(authenticatedSession) {
     try {
-      sessionStorage.setItem(SESSION_KEY, authenticatedSession.accessToken)
+      sessionStorage.setItem(
+        SESSION_KEY,
+        authenticatedSession.accessToken,
+      )
     } catch {
       setAuthError('Could not save your session in this browser.')
       return
@@ -124,14 +141,22 @@ function App() {
             setProjectId(null)
           }}
         >
-          <span className="brand-mark" aria-hidden="true">✓</span>
+          <span className="brand-mark" aria-hidden="true">
+            ✓
+          </span>
           <span>Task Manager</span>
         </a>
 
         {session?.user && (
           <div className="account-actions">
-            <span className="account-name">{session.user.name}</span>
-            <button className="text-button" onClick={logout}>
+            <span className="account-name">
+              {session.user.name}
+            </span>
+
+            <button
+              className="text-button"
+              onClick={logout}
+            >
               Sign out
             </button>
           </div>
