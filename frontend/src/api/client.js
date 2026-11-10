@@ -299,6 +299,14 @@ export function createApiClient({
       },
     ),
 
+    assignTask: (id, userId) => request(
+      `/tasks/${encodeURIComponent(id)}/assignment`,
+      {
+        method: 'PATCH',
+        body: { assigned_to: userId },
+      },
+  ),
+
     // --------------------------------
     // Task Comments
     // --------------------------------
