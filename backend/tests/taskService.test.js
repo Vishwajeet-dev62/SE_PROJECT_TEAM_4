@@ -459,6 +459,78 @@ test("delete soft-deletes a task and restore makes it active again", async () =>
   );
 });
 
+test("project members who are neither creator nor assignee cannot delete tasks", async () => {
+  const { service, tasks, activityEvents } = createDependencies();
+
+  const created = await service.create(
+    "7",
+    { title: "Owner task" },
+    owner,
+  );
+
+  await assert.rejects(
+    service.delete(created.id, member),
+    (error) =>
+      error.status === 403 &&
+      error.code === "FORBIDDEN",
+  );
+
+  assert.equal(tasks.get(created.id).deletedAt, null);
+  assert.equal(activityEvents.length, 1);
+
+  const memberTasks = await service.list("7", member, {});
+
+  assert.equal(memberTasks.data[0].permissions.canDelete, false);
+});
+
+test("project members who are neither creator nor assignee cannot restore tasks", async () => {
+  const { service, tasks, activityEvents } = createDependencies();
+
+  const created = await service.create(
+    "7",
+    { title: "Owner task" },
+    owner,
+  );
+
+  await service.delete(created.id, owner);
+
+  const activityCountBeforeRestore = activityEvents.length;
+
+  await assert.rejects(
+    service.restore(created.id, member),
+    (error) =>
+      error.status === 403 &&
+      error.code === "FORBIDDEN",
+  );
+
+  assert.ok(tasks.get(created.id).deletedAt);
+  assert.equal(activityEvents.length, activityCountBeforeRestore);
+
+  const trash = await service.listTrash("7", member, {});
+
+  assert.equal(trash.data[0].permissions.canRestore, false);
+});
+
+test("assigned users can delete and restore their assigned tasks", async () => {
+  const { service } = createDependencies();
+
+  const created = await service.create(
+    "7",
+    {
+      title: "Assigned task",
+      assigned_to: member.id,
+    },
+    owner,
+  );
+
+  await service.delete(created.id, member);
+
+  const restored = await service.restore(created.id, member);
+
+  assert.equal(restored.deletedAt, null);
+  assert.equal(restored.permissions.canEdit, true);
+});
+
 test("invalid task filters are rejected", async () => {
   const { service } = createDependencies();
 

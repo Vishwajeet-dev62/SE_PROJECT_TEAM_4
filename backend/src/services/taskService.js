@@ -1,4 +1,3 @@
-
 "use strict";
 
 const { ApiError } = require("../errors/apiError");
@@ -244,11 +243,26 @@ class TaskService {
   async delete(taskIdInput, userInput) {
     const user = requireUser(userInput);
 
-    const { task, project } = await this.projectService.authorizeTask(
-      taskIdInput,
-      user,
-      { write: true },
-    );
+    const { task: authorizedTask, project } =
+      await this.projectService.authorizeTask(
+        taskIdInput,
+        user,
+        { write: true },
+      );
+
+    const task = await this.taskRepository.findById(authorizedTask.id);
+
+    if (!task) {
+      throw notFound();
+    }
+
+    if (!canEditTask(task, user)) {
+      throw new ApiError(
+        403,
+        "FORBIDDEN",
+        "You do not have permission to delete this task",
+      );
+    }
 
     const deleted = await this.taskRepository.softDelete(task.id);
 
@@ -305,8 +319,6 @@ class TaskService {
     const user = requireUser(userInput);
     const taskId = parseId(taskIdInput, "taskId");
 
-    // Trash items are not returned by authorizeTask because it only
-    // authorizes active tasks.
     const task = await this.taskRepository.findById(taskId, {
       includeDeleted: true,
     });
@@ -321,6 +333,14 @@ class TaskService {
     );
 
     this.projectService.assertWritable(project);
+
+    if (!canEditTask(task, user)) {
+      throw new ApiError(
+        403,
+        "FORBIDDEN",
+        "You do not have permission to restore this task",
+      );
+    }
 
     const restored = await this.taskRepository.restore(task.id);
 
@@ -518,12 +538,17 @@ class TaskService {
   }
 
   withPermissions(task, user, project) {
+    const canManageTask = canEditTask(task, user);
+
     return {
       ...task,
       permissions: {
-        canEdit: !project.archived && canEditTask(task, user),
-        canDelete: !project.archived,
-        canRestore: Boolean(task.deletedAt) && !project.archived,
+        canEdit: !project.archived && canManageTask,
+        canDelete: !project.archived && canManageTask,
+        canRestore:
+          Boolean(task.deletedAt) &&
+          !project.archived &&
+          canManageTask,
       },
     };
   }
