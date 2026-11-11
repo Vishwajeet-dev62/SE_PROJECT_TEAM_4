@@ -298,10 +298,10 @@ test("migration runner applies sorted files once under a database lock", async (
         ]];
       }
 
-      if (sql.includes("SELECT version")) {
+      if (sql.includes("SELECT migration")) {
         return [[
           ...state.applied,
-        ].map((version) => ({ version }))];
+        ].map((migration) => ({ migration }))];
       }
 
       if (sql.includes("INSERT INTO schema_migrations")) {
@@ -383,10 +383,10 @@ test("migration runner skips migrations that have already been applied", async (
         ]];
       }
 
-      if (sql.includes("SELECT version")) {
+      if (sql.includes("SELECT migration")) {
         return [[
           ...state.applied,
-        ].map((version) => ({ version }))];
+        ].map((migration) => ({ migration }))];
       }
 
       throw new Error(`Unexpected migration query: ${sql}`);
@@ -449,10 +449,10 @@ test("migration runner reports missing member-owned tables without applying sche
         ]];
       }
 
-      if (sql.includes("SELECT version")) {
+      if (sql.includes("SELECT migration")) {
         return [[
           ...state.applied,
-        ].map((version) => ({ version }))];
+        ].map((migration) => ({ migration }))];
       }
 
       if (sql.includes("INSERT INTO schema_migrations")) {
