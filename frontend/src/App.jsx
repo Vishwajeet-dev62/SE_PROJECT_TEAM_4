@@ -197,6 +197,7 @@ function App() {
               <ProjectWorkspace
                 api={api}
                 projectId={projectId}
+                user={session.user}
                 onBack={() => setProjectId(null)}
               />
             ) : (
