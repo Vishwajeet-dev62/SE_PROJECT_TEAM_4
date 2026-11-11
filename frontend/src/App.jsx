@@ -4,6 +4,7 @@ import { createApiClient } from './api/client'
 import AuthScreen from './features/auth/AuthScreen'
 import ProjectList from './features/projects/ProjectList'
 import ProjectWorkspace from './features/projects/ProjectWorkspace'
+import NotificationCenter from './features/notifications/NotificationCenter'
 import './App.css'
 
 const SESSION_KEY = 'taskflow.accessToken'
@@ -149,6 +150,8 @@ function App() {
 
         {session?.user && (
           <div className="account-actions">
+            <NotificationCenter api={api} />
+            
             <span className="account-name">
               {session.user.name}
             </span>

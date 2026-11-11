@@ -5,13 +5,14 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react'
-import { 
+import {
   afterEach,
   beforeEach,
   describe,
   expect,
   it,
-  vi, } from 'vitest'
+  vi,
+} from 'vitest'
 import App from './App'
 
 function jsonResponse(status, payload) {
@@ -25,6 +26,10 @@ function jsonResponse(status, payload) {
 const projectListResponse = {
   data: [],
   pagination: { page: 1, limit: 20, total: 0 },
+}
+
+const unreadCountResponse = {
+  data: { count: 0 },
 }
 
 describe('App authentication integration', () => {
@@ -58,6 +63,10 @@ describe('App authentication integration', () => {
 
       if (String(url).includes('/projects?')) {
         return jsonResponse(200, projectListResponse)
+      }
+
+      if (String(url).endsWith('/notifications/unread-count')) {
+        return jsonResponse(200, unreadCountResponse)
       }
 
       return jsonResponse(404, {
@@ -113,6 +122,7 @@ describe('App authentication integration', () => {
 
   it('sends the login token to protected project APIs and revokes it on sign out', async () => {
     const requests = []
+
     const fetchImpl = vi.fn(async (url, options) => {
       requests.push({ url: String(url), options })
 
@@ -129,6 +139,10 @@ describe('App authentication integration', () => {
         return { ok: true, status: 204 }
       }
 
+      if (String(url).endsWith('/notifications/unread-count')) {
+        return jsonResponse(200, unreadCountResponse)
+      }
+
       return jsonResponse(200, projectListResponse)
     })
 
@@ -139,9 +153,11 @@ describe('App authentication integration', () => {
     fireEvent.change(screen.getByLabelText('Email'), {
       target: { value: 'owner@example.com' },
     })
+
     fireEvent.change(screen.getByLabelText('Password'), {
       target: { value: 'Passw0rdOK' },
     })
+
     fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
 
     expect(
@@ -157,7 +173,10 @@ describe('App authentication integration', () => {
     })
 
     const projectRequest = requests.find(({ url }) => url.includes('/projects?'))
-    expect(projectRequest.options.headers.Authorization).toContain('session-token')
+
+    expect(projectRequest.options.headers.Authorization).toBe(
+      'Bearer session-token',
+    )
 
     fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
 
@@ -166,20 +185,31 @@ describe('App authentication integration', () => {
     ).toBeInTheDocument()
 
     const logoutRequest = requests.find(({ url }) => url.endsWith('/auth/logout'))
-    expect(logoutRequest.options.headers.Authorization).toContain('session-token')
+
+    expect(logoutRequest).toBeDefined()
+    expect(logoutRequest.options.headers.Authorization).toBe(
+      'Bearer session-token',
+    )
     expect(sessionStorage.getItem('taskflow.accessToken')).toBeNull()
   })
 
   it('returns to sign in after a protected API reports an expired session', async () => {
     const fetchImpl = vi.fn()
+      // 1. Login succeeds.
       .mockResolvedValueOnce(jsonResponse(200, {
         data: {
           accessToken: 'expired-token',
           user: { id: '8', name: 'Project owner', role: 'MEMBER' },
         },
       }))
+      // 2. Notification unread-count request succeeds.
+      .mockResolvedValueOnce(jsonResponse(200, unreadCountResponse))
+      // 3. Protected projects request reports an expired session.
       .mockResolvedValueOnce(jsonResponse(401, {
-        error: { code: 'INVALID_TOKEN', message: 'Authentication token expired' },
+        error: {
+          code: 'INVALID_TOKEN',
+          message: 'Authentication token expired',
+        },
       }))
 
     vi.stubGlobal('fetch', fetchImpl)
@@ -189,13 +219,26 @@ describe('App authentication integration', () => {
     fireEvent.change(screen.getByLabelText('Email'), {
       target: { value: 'owner@example.com' },
     })
+
     fireEvent.change(screen.getByLabelText('Password'), {
       target: { value: 'Passw0rdOK' },
     })
+
     fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
 
-    await waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(2))
+    // Wait until the expired-token projects request is made.
+    await waitFor(() => {
+      const projectRequest = fetchImpl.mock.calls.find(([url]) =>
+        String(url).includes('/projects?'),
+      )
 
+      expect(projectRequest).toBeDefined()
+      expect(projectRequest[1].headers.Authorization).toBe(
+        'Bearer expired-token',
+      )
+    })
+
+    // The application should clear the expired session.
     expect(
       await screen.findByRole('heading', { name: 'Welcome back' }),
     ).toBeInTheDocument()
@@ -205,13 +248,18 @@ describe('App authentication integration', () => {
 
   it('keeps the session visible and reports an error if logout cannot reach the server', async () => {
     const fetchImpl = vi.fn()
+      // 1. Login succeeds.
       .mockResolvedValueOnce(jsonResponse(200, {
         data: {
           accessToken: 'session-token',
           user: { id: '8', name: 'Project owner', role: 'MEMBER' },
         },
       }))
+      // 2. Notification unread-count request succeeds.
+      .mockResolvedValueOnce(jsonResponse(200, unreadCountResponse))
+      // 3. Projects request succeeds.
       .mockResolvedValueOnce(jsonResponse(200, projectListResponse))
+      // 4. Logout request fails because the server is offline.
       .mockRejectedValueOnce(new Error('offline'))
 
     vi.stubGlobal('fetch', fetchImpl)
@@ -221,9 +269,11 @@ describe('App authentication integration', () => {
     fireEvent.change(screen.getByLabelText('Email'), {
       target: { value: 'owner@example.com' },
     })
+
     fireEvent.change(screen.getByLabelText('Password'), {
       target: { value: 'Passw0rdOK' },
     })
+
     fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
 
     expect(
@@ -235,7 +285,13 @@ describe('App authentication integration', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'The API server could not be reached',
     )
-    expect(screen.getByRole('heading', { name: 'Your projects' })).toBeInTheDocument()
-    expect(sessionStorage.getItem('taskflow.accessToken')).toBe('session-token')
+
+    expect(
+      screen.getByRole('heading', { name: 'Your projects' }),
+    ).toBeInTheDocument()
+
+    expect(sessionStorage.getItem('taskflow.accessToken')).toBe(
+      'session-token',
+    )
   })
 })
