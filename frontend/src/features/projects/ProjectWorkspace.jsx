@@ -11,7 +11,7 @@ const VIEWS = [
   { id: 'members', label: 'Members' },
 ]
 
-function ProjectWorkspace({ api, projectId, onBack }) {
+function ProjectWorkspace({ api, projectId, user = null, onBack }) {
   const [projectResult, setProjectResult] = useState(null)
   const [view, setView] = useState('dashboard')
   const [editing, setEditing] = useState(false)
@@ -163,7 +163,7 @@ function ProjectWorkspace({ api, projectId, onBack }) {
         <ProjectDashboard api={api} projectId={project.id} />
       )}
       {view === 'tasks' && (
-        <ProjectTasks api={api} project={project} />
+        <ProjectTasks api={api} project={project} user={user} />
       )}
       {view === 'board' && (
         <ProjectBoard api={api} project={project} />

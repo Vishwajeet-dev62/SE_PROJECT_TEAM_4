@@ -35,7 +35,25 @@ function formatDate(value) {
   return date.toLocaleDateString()
 }
 
-function ProjectTasks({ api, project }) {
+
+function canAssignTask(task, project, user) {
+  if (!user?.id || project.archived) return false
+
+  const userId = String(user.id)
+
+  return (
+    user.role === 'ADMIN' ||
+    (project.ownerId != null &&
+      String(project.ownerId) === userId) ||
+    (task.createdBy != null &&
+      String(task.createdBy) === userId) ||
+    (task.assignedTo != null &&
+      String(task.assignedTo) === userId)
+  )
+}
+
+
+function ProjectTasks({ api, project, user = null }) {
   const [tasks, setTasks] = useState([])
   const [categories, setCategories] = useState([])
   const [tags, setTags] = useState([])
@@ -372,7 +390,10 @@ useEffect(() => {
   }
 
   async function changeAssignee(task, nextAssigneeId) {
-    if (archived || assigningTaskId === task.id) return
+    if (
+    !canAssignTask(task, project, user) ||
+    assigningTaskId === task.id
+    )return
 
     const currentAssigneeId = task.assignedTo == null
       ? ''
@@ -728,7 +749,9 @@ useEffect(() => {
                       <select
                         aria-label={`Assign ${task.title}`}
                         value={task.assignedTo == null ? '' : String(task.assignedTo)}
-                        disabled={archived || assigningTaskId === task.id}
+                        disabled={!canAssignTask(task, project, user) ||
+                                  assigningTaskId === task.id
+                                }
                         onChange={(event) =>
                           changeAssignee(task, event.target.value)
                         }
