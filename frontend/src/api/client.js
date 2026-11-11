@@ -338,6 +338,27 @@ export function createApiClient({
         method: 'DELETE',
       },
     ),
+
+
+    // --------------------------------
+    // Notifications
+    // --------------------------------
+
+    listNotifications: (query) => request('/notifications', { query }),
+
+    getUnreadNotificationCount: () => request('/notifications/unread-count'),
+
+    markNotificationAsRead: (id) => request(
+      `/notifications/${encodeURIComponent(id)}/read`,
+      {
+        method: 'PATCH',
+      },
+    ),
+
+    markAllNotificationsAsRead: () => request('/notifications/read-all', {
+      method: 'PATCH',
+    }),
+
   }
 }
 
