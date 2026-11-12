@@ -53,12 +53,12 @@ async function assertDependencies(connection, filename) {
 }
 
 async function runMigrations(pool, migrationsDirectory) {
-  // Use the existing database's migration-history column: version.
+  // Use the existing database's migration-history column: migration.
   await pool.query(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
-      version VARCHAR(255) NOT NULL,
+      migration VARCHAR(255) NOT NULL,
       applied_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-      PRIMARY KEY (version)
+      PRIMARY KEY (migration)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
 
@@ -83,11 +83,11 @@ async function runMigrations(pool, migrationsDirectory) {
     }
 
     const [appliedRows] = await connection.execute(
-      "SELECT version FROM schema_migrations",
+      "SELECT migration FROM schema_migrations",
     );
 
     const applied = new Set(
-      appliedRows.map((row) => row.version),
+      appliedRows.map((row) => row.migration),
     );
 
     for (const filename of filenames) {
@@ -112,7 +112,7 @@ async function runMigrations(pool, migrationsDirectory) {
       }
 
       await connection.execute(
-        "INSERT INTO schema_migrations (version) VALUES (?)",
+        "INSERT INTO schema_migrations (migration) VALUES (?)",
         [filename],
       );
 
