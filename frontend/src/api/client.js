@@ -114,6 +114,16 @@ export function createApiClient({
 
     getCurrentUser: () => request('/auth/me'),
 
+    requestPasswordReset: (body) => request('/auth/forgot-password', {
+      method: 'POST',
+      body,
+    }),
+
+    resetPassword: (body) => request('/auth/reset-password', {
+      method: 'POST',
+      body,
+    }),
+
     // --------------------------------
     // Projects
     // --------------------------------
@@ -305,7 +315,7 @@ export function createApiClient({
         method: 'PATCH',
         body: { assigned_to: userId },
       },
-  ),
+    ),
 
     // --------------------------------
     // Task Comments
@@ -339,7 +349,6 @@ export function createApiClient({
       },
     ),
 
-
     // --------------------------------
     // Notifications
     // --------------------------------
@@ -358,7 +367,6 @@ export function createApiClient({
     markAllNotificationsAsRead: () => request('/notifications/read-all', {
       method: 'PATCH',
     }),
-
   }
 }
 
