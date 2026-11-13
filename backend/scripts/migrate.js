@@ -1,8 +1,8 @@
-
 "use strict";
 
 const fs = require("node:fs/promises");
 const path = require("node:path");
+require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
 const { createPool } = require("../src/config/database");
 const { getConfig } = require("../src/config/env");
 
@@ -20,6 +20,7 @@ const MIGRATION_DEPENDENCIES = {
   "012_create_notifications.sql": ["users"],
   "013_create_categories.sql": ["projects", "tasks"],
   "014_create_tags.sql": ["projects", "tasks"],
+  "015_align_user_security_column_names.sql": ["users"],
 };
 
 async function tableExists(connection, tableName) {
@@ -52,8 +53,35 @@ async function assertDependencies(connection, filename) {
   }
 }
 
+async function getMigrationHistoryColumn(connection) {
+  try {
+    await connection.execute(
+      "SELECT migration FROM schema_migrations LIMIT 0",
+    );
+    return "migration";
+  } catch (error) {
+    if (error.code !== "ER_BAD_FIELD_ERROR" && error.errno !== 1054) {
+      throw error;
+    }
+  }
+
+  try {
+    await connection.execute(
+      "SELECT version FROM schema_migrations LIMIT 0",
+    );
+    return "version";
+  } catch (error) {
+    if (error.code === "ER_BAD_FIELD_ERROR" || error.errno === 1054) {
+      throw new Error(
+        "schema_migrations must contain either a migration or version column.",
+      );
+    }
+
+    throw error;
+  }
+}
+
 async function runMigrations(pool, migrationsDirectory) {
-  // Use the existing database's migration-history column: migration.
   await pool.query(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       migration VARCHAR(255) NOT NULL,
@@ -82,8 +110,10 @@ async function runMigrations(pool, migrationsDirectory) {
       throw new Error("Could not acquire the database migration lock");
     }
 
+    const historyColumn = await getMigrationHistoryColumn(connection);
+
     const [appliedRows] = await connection.execute(
-      "SELECT migration FROM schema_migrations",
+      `SELECT ${historyColumn} AS migration FROM schema_migrations`,
     );
 
     const applied = new Set(
@@ -112,7 +142,7 @@ async function runMigrations(pool, migrationsDirectory) {
       }
 
       await connection.execute(
-        "INSERT INTO schema_migrations (migration) VALUES (?)",
+        `INSERT INTO schema_migrations (${historyColumn}) VALUES (?)`,
         [filename],
       );
 
@@ -165,4 +195,5 @@ module.exports = {
   assertDependencies,
   runMigrations,
   MIGRATION_DEPENDENCIES,
+  getMigrationHistoryColumn,
 };
