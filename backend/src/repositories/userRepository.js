@@ -36,6 +36,9 @@ class UserRepository {
     const [rows] = await this.pool.execute(
       `SELECT id, name, email, password_hash, role,
               active, failed_attempts, locked_until,
+              TIMESTAMPDIFF(
+                SECOND, '1970-01-01 00:00:00', password_changed_at
+              ) AS password_changed_epoch,
               created_at, updated_at
        FROM users
        WHERE email = ?`,
@@ -49,6 +52,9 @@ class UserRepository {
     const [rows] = await this.pool.execute(
       `SELECT id, name, email, password_hash, role,
               active, failed_attempts, locked_until,
+              TIMESTAMPDIFF(
+                SECOND, '1970-01-01 00:00:00', password_changed_at
+              ) AS password_changed_epoch,
               created_at, updated_at
        FROM users
        WHERE id = ?`,
@@ -161,6 +167,12 @@ function mapUser(row) {
     active: Boolean(row.active),
     failedAttempts: Number(row.failed_attempts),
     lockedUntil: row.locked_until,
+    // Seconds since the Unix epoch (UTC) of the last password change, or
+    // null if the password was never changed after registration.
+    passwordChangedEpoch:
+      row.password_changed_epoch == null
+        ? null
+        : Number(row.password_changed_epoch),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

@@ -4,6 +4,8 @@
 require("dotenv").config({ quiet: true });
 
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const crypto = require("node:crypto");
 const jwt = require("jsonwebtoken");
 const { createPool } = require("../src/config/database");
@@ -13,22 +15,12 @@ const { createServices } = require("../src/services/createServices");
 
 const REQUIRED_OPT_IN = "M2_MYSQL_INTEGRATION=1";
 
-const MIGRATIONS = [
-  "001_users.sql",
-  "002_projects.sql",
-  "003_project_members.sql",
-  "004_tasks.sql",
-  "005_comments.sql",
-  "006_audit_logs.sql",
-  "007_password_reset_tokens.sql",
-  "008_revoked_tokens.sql",
-  "009_align_schema_column_names.sql",
-  "010_align_project_member_column_name.sql",
-  "011_add_project_to_audit_logs.sql",
-  "012_create_notifications.sql",
-  "013_create_categories.sql",
-  "014_create_tags.sql",
-];
+// Read from the folder so a newly added migration cannot leave this check
+// stale (the list used to be hardcoded and stopped at 014).
+const MIGRATIONS = fs
+  .readdirSync(path.join(__dirname, "..", "migrations"))
+  .filter((filename) => filename.endsWith(".sql"))
+  .sort();
 
 const APPLICATION_TABLES = [
   "users",

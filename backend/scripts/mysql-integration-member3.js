@@ -294,9 +294,18 @@ async function runChecks(pool, config, fixture) {
       "expired link",
     );
     assert.equal((await auditRows(users.alice.id, "PASSWORD_RESET_COMPLETED")).length, 1);
-    const sessionsSurviveReset =
-      (await api("/auth/me", { token: oldAliceToken })).status === 200;
-    done("password reset: hashed single-use 30-minute links, newest link only, expiry, audit");
+    const sessionEndedByReset = expectStatus(
+      await api("/auth/me", { token: oldAliceToken }),
+      401,
+      "token issued before the reset",
+    );
+    assert.equal(sessionEndedByReset.error.code, "SESSION_REVOKED");
+    const [changedRows] = await pool.execute(
+      "SELECT password_changed_at IS NOT NULL AS changed FROM users WHERE id = ?",
+      [users.alice.id],
+    );
+    assert.equal(Number(changedRows[0].changed), 1);
+    done("password reset: hashed single-use 30-minute links, newest link only, expiry, audit, earlier sessions ended");
 
     // 5. Assignment -------------------------------------------------------
     const project = expectStatus(
@@ -377,7 +386,7 @@ async function runChecks(pool, config, fixture) {
     assert.equal(Number(secretRows[0].found), 0, "no passwords or reset tokens in audit logs");
     done("audit logs contain no passwords or reset tokens");
 
-    return { checks, sessionsSurviveReset };
+    return { checks };
   } finally {
     console.info = originalInfo;
     await new Promise((resolve) => flow.server.close(resolve));
