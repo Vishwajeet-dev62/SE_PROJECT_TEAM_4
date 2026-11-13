@@ -31,6 +31,7 @@ test("Member 2 migrations have stable order and explicit external dependencies",
     "012_create_notifications.sql",
     "013_create_categories.sql",
     "014_create_tags.sql",
+    "015_align_user_security_column_names.sql",
   ]);
 
   assert.equal(MIGRATION_DEPENDENCIES["001_users.sql"], undefined);
@@ -298,6 +299,10 @@ test("migration runner applies sorted files once under a database lock", async (
         ]];
       }
 
+      if (sql === "SELECT migration FROM schema_migrations LIMIT 0") {
+        return [[]];
+      }
+
       if (sql.includes("SELECT migration")) {
         return [[
           ...state.applied,
@@ -383,6 +388,10 @@ test("migration runner skips migrations that have already been applied", async (
         ]];
       }
 
+      if (sql === "SELECT migration FROM schema_migrations LIMIT 0") {
+        return [[]];
+      }
+
       if (sql.includes("SELECT migration")) {
         return [[
           ...state.applied,
@@ -411,6 +420,92 @@ test("migration runner skips migrations that have already been applied", async (
   assert.equal(state.lockReleased, true);
 });
 
+test("migration runner supports legacy version-based migration history", async () => {
+  const migration015 = "015_align_user_security_column_names.sql";
+  const alreadyApplied = fs
+    .readdirSync(migrationDirectory)
+    .filter((filename) => filename !== migration015)
+    .sort();
+
+  const state = {
+    tables: new Set(["users"]),
+    applied: new Set(alreadyApplied),
+    executed: [],
+    historyWrites: [],
+    lockReleased: false,
+  };
+
+  const connection = {
+    execute: async (sql, values = []) => {
+      if (sql.includes("GET_LOCK")) {
+        return [[{ lock_acquired: 1 }]];
+      }
+
+      if (sql.includes("RELEASE_LOCK")) {
+        state.lockReleased = true;
+        return [[{ released: 1 }]];
+      }
+
+      if (sql === "SELECT migration FROM schema_migrations LIMIT 0") {
+        const error = new Error("Unknown column 'migration'");
+        error.code = "ER_BAD_FIELD_ERROR";
+        error.errno = 1054;
+        throw error;
+      }
+
+      if (sql === "SELECT version FROM schema_migrations LIMIT 0") {
+        return [[]];
+      }
+
+      if (sql.includes("SELECT version AS migration FROM schema_migrations")) {
+        return [[
+          ...state.applied,
+        ].map((version) => ({ migration: version }))];
+      }
+
+      if (sql.includes("information_schema.tables")) {
+        return [[{
+          table_count: Number(state.tables.has(values[0])),
+        }]];
+      }
+
+      if (sql.includes("INSERT INTO schema_migrations (version)")) {
+        state.applied.add(values[0]);
+        state.historyWrites.push(values[0]);
+        return [{ affectedRows: 1 }];
+      }
+
+      throw new Error(`Unexpected migration query: ${sql}`);
+    },
+
+    query: async (sql) => {
+      state.executed.push(sql);
+      return [{ affectedRows: 0 }];
+    },
+
+    release: () => {},
+  };
+
+  const pool = {
+    query: async () => [{ affectedRows: 0 }],
+    getConnection: async () => connection,
+  };
+
+  const completed = await runMigrations(pool, migrationDirectory);
+
+  assert.deepEqual(completed, [migration015]);
+  assert.deepEqual(state.historyWrites, [migration015]);
+  assert.equal(state.applied.has(migration015), true);
+  assert.equal(state.lockReleased, true);
+
+  const expectedSql = fs
+    .readFileSync(path.join(migrationDirectory, migration015), "utf8")
+    .split(";")
+    .map((statement) => statement.trim())
+    .filter((statement) => statement.length > 0);
+
+  assert.deepEqual(state.executed, expectedSql);
+});
 test("migration runner reports missing member-owned tables without applying schema", async () => {
   const state = {
     tables: new Set([
@@ -447,6 +542,10 @@ test("migration runner reports missing member-owned tables without applying sche
             ),
           },
         ]];
+      }
+
+      if (sql === "SELECT migration FROM schema_migrations LIMIT 0") {
+        return [[]];
       }
 
       if (sql.includes("SELECT migration")) {
