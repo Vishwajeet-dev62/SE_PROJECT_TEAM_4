@@ -1,3 +1,4 @@
+
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ApiRequestError, createApiClient } from './client'
 
@@ -30,8 +31,13 @@ describe('API client', () => {
 
   it('serializes JSON bodies and returns null for no-content responses', async () => {
     const fetchImpl = vi.fn()
-      .mockResolvedValueOnce({ ok: true, status: 201, json: async () => ({ data: { id: '1' } }) })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        json: async () => ({ data: { id: '1' } }),
+      })
       .mockResolvedValueOnce({ ok: true, status: 204 })
+
     const client = createApiClient({
       baseUrl: 'http://localhost:3000/api/v1',
       fetchImpl,
@@ -40,13 +46,16 @@ describe('API client', () => {
     await client.createProject({ name: 'Sprint' })
     const response = await client.removeMember('1', '2')
 
-    expect(fetchImpl.mock.calls[0][1].headers['Content-Type']).toBe('application/json')
+    expect(fetchImpl.mock.calls[0][1].headers['Content-Type']).toBe(
+      'application/json',
+    )
     expect(fetchImpl.mock.calls[0][1].body).toBe('{"name":"Sprint"}')
     expect(response).toBeNull()
   })
 
   it('clears the authenticated session on an unauthorized API response', async () => {
     const onUnauthorized = vi.fn()
+
     const client = createApiClient({
       baseUrl: 'http://localhost:3000/api/v1',
       fetchImpl: vi.fn().mockResolvedValue({
@@ -64,6 +73,7 @@ describe('API client', () => {
       status: 401,
       code: 'SESSION_REVOKED',
     })
+
     expect(onUnauthorized).toHaveBeenCalledOnce()
   })
 
@@ -97,6 +107,7 @@ describe('API client', () => {
       baseUrl: 'http://localhost:3000/api/v1',
       fetchImpl: vi.fn().mockRejectedValue(new Error('offline')),
     })
+
     const invalidClient = createApiClient({
       baseUrl: 'http://localhost:3000/api/v1',
       fetchImpl: vi.fn().mockResolvedValue({
@@ -108,9 +119,80 @@ describe('API client', () => {
       }),
     })
 
-    await expect(networkClient.listProjects()).rejects.toBeInstanceOf(ApiRequestError)
+    await expect(networkClient.listProjects()).rejects.toBeInstanceOf(
+      ApiRequestError,
+    )
+
     await expect(invalidClient.listProjects()).rejects.toMatchObject({
       code: 'INVALID_RESPONSE',
     })
+  })
+
+  it('requests a password reset using the forgot-password endpoint', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 202,
+      json: async () => ({
+        data: {
+          message: 'If an account exists, a reset link has been sent.',
+        },
+      }),
+    })
+
+    const client = createApiClient({
+      baseUrl: 'http://localhost:3000/api/v1',
+      fetchImpl,
+    })
+
+    await client.requestPasswordReset({
+      email: 'member@example.com',
+    })
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      expect.objectContaining({
+        href: 'http://localhost:3000/api/v1/auth/forgot-password',
+      }),
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          email: 'member@example.com',
+        }),
+      }),
+    )
+  })
+
+  it('resets a password using the reset-password endpoint', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        data: {
+          message: 'Password has been reset.',
+        },
+      }),
+    })
+
+    const client = createApiClient({
+      baseUrl: 'http://localhost:3000/api/v1',
+      fetchImpl,
+    })
+
+    await client.resetPassword({
+      token: 'valid-reset-token',
+      newPassword: 'NewPassw0rd',
+    })
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      expect.objectContaining({
+        href: 'http://localhost:3000/api/v1/auth/reset-password',
+      }),
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          token: 'valid-reset-token',
+          newPassword: 'NewPassw0rd',
+        }),
+      }),
+    )
   })
 })
