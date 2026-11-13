@@ -22,6 +22,7 @@ test("database configuration is required and numeric settings are bounded", () =
     "https://app.example.test",
     "http://localhost:5173",
   ]);
+  assert.equal(config.email.smtp, null);
   assert.throws(() => getConfig({
     DB_USER: "task_app",
     DB_NAME: "task_manager",
@@ -58,4 +59,47 @@ test("pagination uses documented defaults and rejects unsafe offsets", () => {
   });
   assert.throws(() => parsePagination({ limit: "101" }), ApiError);
   assert.throws(() => parsePagination({ page: "900719925474100" }), ApiError);
+});
+
+
+test("SMTP configuration is parsed and incomplete settings are rejected", () => {
+  const config = getConfig({
+    DB_USER: "task_app",
+    DB_NAME: "task_manager",
+    SMTP_HOST: "smtp.example.com",
+    SMTP_PORT: "465",
+    SMTP_SECURE: "true",
+    SMTP_USER: "sender@example.com",
+    SMTP_PASS: "test-password",
+  });
+
+  assert.deepEqual(config.email.smtp, {
+    host: "smtp.example.com",
+    port: 465,
+    secure: true,
+    user: "sender@example.com",
+    pass: "test-password",
+    from: "sender@example.com",
+  });
+
+  assert.throws(
+    () => getConfig({
+      DB_USER: "task_app",
+      DB_NAME: "task_manager",
+      SMTP_HOST: "smtp.example.com",
+    }),
+    /SMTP_USER is required/,
+  );
+
+  assert.throws(
+    () => getConfig({
+      DB_USER: "task_app",
+      DB_NAME: "task_manager",
+      SMTP_HOST: "smtp.example.com",
+      SMTP_USER: "sender@example.com",
+      SMTP_PASS: "test-password",
+      SMTP_SECURE: "yes",
+    }),
+    /SMTP_SECURE must be true or false/,
+  );
 });
