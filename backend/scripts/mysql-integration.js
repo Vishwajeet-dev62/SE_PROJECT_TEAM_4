@@ -112,11 +112,11 @@ async function assertDatabaseReady(pool, expectedDatabase) {
   }
 
   const [migrationRows] = await pool.query(
-    "SELECT version FROM schema_migrations ORDER BY version",
+    "SELECT migration FROM schema_migrations ORDER BY migration",
   );
 
   assert.deepEqual(
-    migrationRows.map((row) => row.version),
+    migrationRows.map((row) => row.migration),
     MIGRATIONS,
     "Apply all documented migrations before running this script; this script never migrates",
   );
