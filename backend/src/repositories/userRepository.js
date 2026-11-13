@@ -73,32 +73,29 @@ class UserRepository {
   }
 
   async recordFailedLogin(id, maxAttempts = 5, lockoutMinutes = 15) {
+    // An expired lock starts a fresh count.
     await this.pool.execute(
       `UPDATE users
-       SET failed_attempts = CASE
-             WHEN locked_until IS NOT NULL
-                  AND locked_until <= UTC_TIMESTAMP(3)
-               THEN 1
-             ELSE failed_attempts + 1
-           END,
-           locked_until = CASE
-             WHEN (
-               CASE
-                 WHEN locked_until IS NOT NULL
-                      AND locked_until <= UTC_TIMESTAMP(3)
-                   THEN 1
-                 ELSE failed_attempts + 1
-               END
-             ) >= ?
-               THEN DATE_ADD(
-                 UTC_TIMESTAMP(3),
-                 INTERVAL ? MINUTE
-               )
-             WHEN locked_until IS NOT NULL
-                  AND locked_until <= UTC_TIMESTAMP(3)
-               THEN NULL
+       SET failed_attempts = 0,
+           locked_until = NULL
+       WHERE id = ?
+         AND locked_until IS NOT NULL
+         AND locked_until <= UTC_TIMESTAMP(3)`,
+      [id],
+    );
+
+    // MySQL evaluates the SET assignments left to right and later ones see
+    // the result of earlier ones. locked_until therefore has to be assigned
+    // BEFORE the counter is incremented, so that it sees the previous count;
+    // the other order locks the account one failed attempt too early.
+    await this.pool.execute(
+      `UPDATE users
+       SET locked_until = CASE
+             WHEN failed_attempts + 1 >= ?
+               THEN DATE_ADD(UTC_TIMESTAMP(3), INTERVAL ? MINUTE)
              ELSE locked_until
-           END
+           END,
+           failed_attempts = failed_attempts + 1
        WHERE id = ?`,
       [maxAttempts, lockoutMinutes, id],
     );
