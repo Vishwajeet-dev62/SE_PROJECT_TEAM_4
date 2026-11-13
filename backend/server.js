@@ -10,6 +10,8 @@ function start() {
   const services = createServices(pool, {
     jwtSecret: config.jwtSecret,
     jwtExpiresIn: config.jwtExpiresIn,
+    nodeEnv: config.nodeEnv,
+    email: config.email,
   });
   const app = createApp({ ...services, corsOrigins: config.corsOrigins });
   const server = app.listen(config.port, () => {

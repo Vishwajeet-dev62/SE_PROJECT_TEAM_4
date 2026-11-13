@@ -41,6 +41,7 @@ const { ActivityService } = require("./activityService");
 const {
   createDevEmailSender,
   createUnconfiguredEmailSender,
+  createSmtpEmailSender,
 } = require("./emailSender");
 
 const { createRequireAuth } = require("../middleware/requireAuth");
@@ -136,8 +137,9 @@ function createServices(pool, authConfig = {}) {
     passwordResetRepository: new PasswordResetRepository(pool),
     userRepository,
     auditLog,
-    emailSender:
-      process.env.NODE_ENV === "production"
+    emailSender: authConfig.email?.smtp
+      ? createSmtpEmailSender(authConfig.email.smtp)
+      : (authConfig.nodeEnv || process.env.NODE_ENV) === "production"
         ? createUnconfiguredEmailSender()
         : createDevEmailSender(),
     resetUrlBase:

@@ -1,3 +1,4 @@
+
 const DEFAULT_PORT = 3000;
 
 function readInteger(name, value, fallback, minimum, maximum) {
@@ -24,6 +25,49 @@ function getConfig(env = process.env) {
     .map((origin) => origin.trim())
     .filter(Boolean);
 
+  const smtpVariables = [
+    "SMTP_HOST",
+    "SMTP_USER",
+    "SMTP_PASS",
+  ];
+
+  const smtpConfigured = smtpVariables.some(
+    (name) => Boolean(env[name]?.trim()),
+  );
+
+  let smtp = null;
+
+  if (smtpConfigured) {
+    for (const name of smtpVariables) {
+      if (!env[name]?.trim()) {
+        throw new Error(`${name} is required when SMTP is configured`);
+      }
+    }
+
+    const secureValue = (env.SMTP_SECURE || "false").toLowerCase();
+
+    if (!["true", "false"].includes(secureValue)) {
+      throw new Error("SMTP_SECURE must be true or false");
+    }
+
+    const port = readInteger(
+      "SMTP_PORT",
+      env.SMTP_PORT,
+      587,
+      1,
+      65535,
+    );
+
+    smtp = {
+      host: env.SMTP_HOST.trim(),
+      port,
+      secure: secureValue === "true",
+      user: env.SMTP_USER.trim(),
+      pass: env.SMTP_PASS,
+      from: env.SMTP_FROM?.trim() || env.SMTP_USER.trim(),
+    };
+  }
+
   return {
     nodeEnv: env.NODE_ENV || "development",
     port: readInteger("PORT", env.PORT, DEFAULT_PORT, 1, 65535),
@@ -44,6 +88,7 @@ function getConfig(env = process.env) {
     jwtSecret: env.JWT_SECRET,
     jwtExpiresIn: env.JWT_EXPIRES_IN || "30m",
     corsOrigins: origins,
+    email: { smtp },
   };
 }
 
