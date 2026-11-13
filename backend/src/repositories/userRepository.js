@@ -1,4 +1,6 @@
 
+"use strict";
+
 const { ApiError } = require("../errors/apiError");
 
 const DUPLICATE_KEY = "ER_DUP_ENTRY";
@@ -33,9 +35,8 @@ class UserRepository {
   async findByEmail(email) {
     const [rows] = await this.pool.execute(
       `SELECT id, name, email, password_hash, role,
-              active,
-              failed_attempts,
-              locked_until, created_at, updated_at
+              active, failed_attempts, locked_until,
+              created_at, updated_at
        FROM users
        WHERE email = ?`,
       [email],
@@ -47,9 +48,8 @@ class UserRepository {
   async findById(id) {
     const [rows] = await this.pool.execute(
       `SELECT id, name, email, password_hash, role,
-              active,
-              failed_attempts,
-              locked_until, created_at, updated_at
+              active, failed_attempts, locked_until,
+              created_at, updated_at
        FROM users
        WHERE id = ?`,
       [id],
@@ -84,10 +84,7 @@ class UserRepository {
       [id],
     );
 
-    // MySQL evaluates the SET assignments left to right and later ones see
-    // the result of earlier ones. locked_until therefore has to be assigned
-    // BEFORE the counter is incremented, so that it sees the previous count;
-    // the other order locks the account one failed attempt too early.
+    // Decide the lock using the previous attempt count before incrementing.
     await this.pool.execute(
       `UPDATE users
        SET locked_until = CASE
@@ -110,17 +107,21 @@ class UserRepository {
       [id],
     );
   }
+
   async listAll({ limit, offset }) {
     const [rows] = await this.pool.execute(
-      `SELECT id, name, email, role, active, locked_until, created_at
+      `SELECT id, name, email, role,
+              active, locked_until, created_at
        FROM users
        ORDER BY id ASC
        LIMIT ? OFFSET ?`,
       [limit, offset],
     );
+
     const [countRows] = await this.pool.execute(
       "SELECT COUNT(*) AS total FROM users",
     );
+
     return {
       rows: rows.map((row) => ({
         id: String(row.id),
@@ -136,7 +137,10 @@ class UserRepository {
   }
 
   async setRole(id, role) {
-    await this.pool.execute("UPDATE users SET role = ? WHERE id = ?", [role, id]);
+    await this.pool.execute(
+      "UPDATE users SET role = ? WHERE id = ?",
+      [role, id],
+    );
   }
 
   async setActive(id, active) {
@@ -145,7 +149,6 @@ class UserRepository {
       [active ? 1 : 0, id],
     );
   }
-
 }
 
 function mapUser(row) {
@@ -173,7 +176,7 @@ function toPublicUser(user) {
   };
 }
 
-// Admin views add account state but still never expose the hash.
+// Admin views add account state but never expose the password hash.
 function toAdminUser(user) {
   return {
     id: user.id,

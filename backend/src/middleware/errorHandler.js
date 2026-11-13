@@ -1,3 +1,4 @@
+
 const { ApiError } = require("../errors/apiError");
 
 function errorHandler(error, req, res, next) {
@@ -5,7 +6,11 @@ function errorHandler(error, req, res, next) {
     return next(error);
   }
 
-  if (error instanceof SyntaxError && error.status === 400 && "body" in error) {
+  if (
+    error instanceof SyntaxError &&
+    error.status === 400 &&
+    "body" in error
+  ) {
     return res.status(400).json({
       error: {
         code: "INVALID_JSON",
@@ -28,17 +33,26 @@ function errorHandler(error, req, res, next) {
       code: error.code,
       message: error.message,
     };
+
     if (error.details !== undefined) {
       body.details = error.details;
     }
+
     return res.status(error.status).json({ error: body });
   }
 
   console.error(JSON.stringify({
     level: "error",
     requestId: req.requestId,
+    method: req.method,
+    path: req.originalUrl,
     message: "Unhandled request error",
   }));
+
+  if (process.env.NODE_ENV !== "production") {
+    console.error(error);
+  }
+
   return res.status(500).json({
     error: {
       code: "INTERNAL_SERVER_ERROR",

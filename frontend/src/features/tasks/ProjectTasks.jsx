@@ -1,6 +1,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import './ProjectTasks.css'
+
 const PAGE_SIZE = 10
 
 const STATUSES = [
@@ -35,7 +36,6 @@ function formatDate(value) {
   return date.toLocaleDateString()
 }
 
-
 function canAssignTask(task, project, user) {
   if (!user?.id || project.archived) return false
 
@@ -52,13 +52,17 @@ function canAssignTask(task, project, user) {
   )
 }
 
-
 function ProjectTasks({ api, project, user = null }) {
   const [tasks, setTasks] = useState([])
   const [categories, setCategories] = useState([])
   const [tags, setTags] = useState([])
   const [members, setMembers] = useState([])
   const [assigningTaskId, setAssigningTaskId] = useState(null)
+
+  const [editingCategoryId, setEditingCategoryId] = useState(null)
+  const [editingCategoryName, setEditingCategoryName] = useState('')
+  const [categoryActionError, setCategoryActionError] = useState('')
+  const [categoryActionLoading, setCategoryActionLoading] = useState(false)
 
   const [pagination, setPagination] = useState({
     page: 1,
@@ -187,22 +191,22 @@ function ProjectTasks({ api, project, user = null }) {
   ])
 
   useEffect(() => {
-  let cancelled = false
+    let cancelled = false
 
-  async function run() {
-    await Promise.resolve()
+    async function run() {
+      await Promise.resolve()
 
-    if (!cancelled) {
-      await loadMetadata()
+      if (!cancelled) {
+        await loadMetadata()
+      }
     }
-  }
 
-  void run()
+    void run()
 
-  return () => {
-    cancelled = true
-  }
-}, [loadMetadata])
+    return () => {
+      cancelled = true
+    }
+  }, [loadMetadata])
 
   useEffect(() => {
     let cancelled = false
@@ -222,23 +226,23 @@ function ProjectTasks({ api, project, user = null }) {
     }
   }, [loadMembers])
 
-useEffect(() => {
-  let cancelled = false
+  useEffect(() => {
+    let cancelled = false
 
-  async function run() {
-    await Promise.resolve()
+    async function run() {
+      await Promise.resolve()
 
-    if (!cancelled) {
-      await loadTasks()
+      if (!cancelled) {
+        await loadTasks()
+      }
     }
-  }
 
-  void run()
+    void run()
 
-  return () => {
-    cancelled = true
-  }
-}, [loadTasks])
+    return () => {
+      cancelled = true
+    }
+  }, [loadTasks])
 
   function updateField(field, value) {
     setForm((current) => ({
@@ -391,13 +395,14 @@ useEffect(() => {
 
   async function changeAssignee(task, nextAssigneeId) {
     if (
-    !canAssignTask(task, project, user) ||
-    assigningTaskId === task.id
-    )return
+      !canAssignTask(task, project, user) ||
+      assigningTaskId === task.id
+    ) {
+      return
+    }
 
-    const currentAssigneeId = task.assignedTo == null
-      ? ''
-      : String(task.assignedTo)
+    const currentAssigneeId =
+      task.assignedTo == null ? '' : String(task.assignedTo)
 
     if (currentAssigneeId === nextAssigneeId) return
 
@@ -410,11 +415,13 @@ useEffect(() => {
         task.id,
         nextAssigneeId === '' ? null : nextAssigneeId,
       )
+
       setNotice(
         nextAssigneeId === ''
           ? 'Task unassigned successfully.'
           : 'Task assigned successfully.',
       )
+
       await loadTasks()
     } catch (assignmentError) {
       setError(getErrorMessage(assignmentError))
@@ -449,6 +456,87 @@ useEffect(() => {
       setFormError(getErrorMessage(createError))
     } finally {
       setCreatingCategory(false)
+    }
+  }
+
+  async function updateCategory() {
+    if (
+      editingCategoryId == null ||
+      !editingCategoryName.trim()
+    ) {
+      return
+    }
+
+    setCategoryActionLoading(true)
+    setCategoryActionError('')
+
+    try {
+      const response = await api.updateCategory(
+        projectId,
+        editingCategoryId,
+        editingCategoryName.trim(),
+      )
+
+      const updatedCategory = response.data
+
+      setCategories((current) =>
+        current
+          .map((category) =>
+            String(category.id) === String(editingCategoryId)
+              ? updatedCategory
+              : category,
+          )
+          .sort((a, b) => a.name.localeCompare(b.name)),
+      )
+
+      setEditingCategoryId(null)
+      setEditingCategoryName('')
+      setNotice('Category updated successfully.')
+    } catch (updateError) {
+      setCategoryActionError(getErrorMessage(updateError))
+    } finally {
+      setCategoryActionLoading(false)
+    }
+  }
+
+  async function deleteCategory(categoryId) {
+    const confirmed = window.confirm(
+      'Delete this category? Tasks using it will remain, but will no longer have a category.',
+    )
+
+    if (!confirmed) return
+
+    setCategoryActionLoading(true)
+    setCategoryActionError('')
+
+    try {
+      await api.deleteCategory(projectId, categoryId)
+
+      setCategories((current) =>
+        current.filter(
+          (category) => String(category.id) !== String(categoryId),
+        ),
+      )
+
+      if (String(categoryFilter) === String(categoryId)) {
+        setCategoryFilter('')
+        setPage(1)
+      }
+
+      if (String(form.category_id) === String(categoryId)) {
+        updateField('category_id', '')
+      }
+
+      if (String(editingCategoryId) === String(categoryId)) {
+        setEditingCategoryId(null)
+        setEditingCategoryName('')
+      }
+
+      setNotice('Category deleted successfully.')
+    } catch (deleteError) {
+      setCategoryActionError(getErrorMessage(deleteError))
+    } finally {
+      setCategoryActionLoading(false)
     }
   }
 
@@ -558,6 +646,107 @@ useEffect(() => {
         <p className="error-message" role="alert">
           {error}
         </p>
+      )}
+
+      {!showTrash && (
+        <section
+          className="category-management"
+          aria-label="Category management"
+        >
+          <div className="tasks-heading">
+            <div>
+              <h3>Manage categories</h3>
+              <p className="muted">
+                Rename or delete categories used to organize project tasks.
+              </p>
+            </div>
+          </div>
+
+          {categoryActionError && (
+            <p className="error-message" role="alert">
+              {categoryActionError}
+            </p>
+          )}
+
+          {categories.length === 0 ? (
+            <p className="muted">No categories created yet.</p>
+          ) : (
+            <div className="category-list">
+              {categories.map((category) => (
+                <div className="inline-create-form" key={category.id}>
+                  {String(editingCategoryId) === String(category.id) ? (
+                    <>
+                      <label>
+                        Category name
+                        <input
+                          type="text"
+                          maxLength={80}
+                          value={editingCategoryName}
+                          onChange={(event) =>
+                            setEditingCategoryName(event.target.value)
+                          }
+                          disabled={categoryActionLoading || archived}
+                        />
+                      </label>
+
+                      <button
+                        type="button"
+                        className="primary-button"
+                        onClick={updateCategory}
+                        disabled={
+                          archived ||
+                          categoryActionLoading ||
+                          !editingCategoryName.trim()
+                        }
+                      >
+                        {categoryActionLoading ? 'Saving...' : 'Save'}
+                      </button>
+
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => {
+                          setEditingCategoryId(null)
+                          setEditingCategoryName('')
+                          setCategoryActionError('')
+                        }}
+                        disabled={categoryActionLoading}
+                      >
+                        Cancel
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <span>{category.name}</span>
+
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => {
+                          setEditingCategoryId(category.id)
+                          setEditingCategoryName(category.name)
+                          setCategoryActionError('')
+                        }}
+                        disabled={archived || categoryActionLoading}
+                      >
+                        Rename
+                      </button>
+
+                      <button
+                        type="button"
+                        className="text-button danger-button"
+                        onClick={() => deleteCategory(category.id)}
+                        disabled={archived || categoryActionLoading}
+                      >
+                        Delete
+                      </button>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
       )}
 
       {!showTrash && (
@@ -706,8 +895,12 @@ useEffect(() => {
                   <span>
                     Assigned to:{' '}
                     {members.find(
-                      (member) => String(member.id) === String(task.assignedTo),
-                    )?.name || (task.assignedTo ? 'Project member' : 'Unassigned')}
+                      (member) =>
+                        String(member.id) === String(task.assignedTo),
+                    )?.name ||
+                      (task.assignedTo
+                        ? 'Project member'
+                        : 'Unassigned')}
                   </span>
 
                   {task.categoryId && (
@@ -746,12 +939,18 @@ useEffect(() => {
                       <span className="visually-hidden">
                         Assign {task.title} to a project member
                       </span>
+
                       <select
                         aria-label={`Assign ${task.title}`}
-                        value={task.assignedTo == null ? '' : String(task.assignedTo)}
-                        disabled={!canAssignTask(task, project, user) ||
-                                  assigningTaskId === task.id
-                                }
+                        value={
+                          task.assignedTo == null
+                            ? ''
+                            : String(task.assignedTo)
+                        }
+                        disabled={
+                          !canAssignTask(task, project, user) ||
+                          assigningTaskId === task.id
+                        }
                         onChange={(event) =>
                           changeAssignee(task, event.target.value)
                         }
@@ -782,10 +981,7 @@ useEffect(() => {
                         }
                       >
                         {STATUSES.map((item) => (
-                          <option
-                            key={item.value}
-                            value={item.value}
-                          >
+                          <option key={item.value} value={item.value}>
                             {item.label}
                           </option>
                         ))}
@@ -915,10 +1111,7 @@ useEffect(() => {
                     }
                   >
                     {STATUSES.map((item) => (
-                      <option
-                        key={item.value}
-                        value={item.value}
-                      >
+                      <option key={item.value} value={item.value}>
                         {item.label}
                       </option>
                     ))}
@@ -964,10 +1157,7 @@ useEffect(() => {
                   <option value="">No category</option>
 
                   {categories.map((category) => (
-                    <option
-                      key={category.id}
-                      value={category.id}
-                    >
+                    <option key={category.id} value={category.id}>
                       {category.name}
                     </option>
                   ))}
