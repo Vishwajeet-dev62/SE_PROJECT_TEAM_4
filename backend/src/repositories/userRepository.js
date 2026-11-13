@@ -35,9 +35,8 @@ class UserRepository {
   async findByEmail(email) {
     const [rows] = await this.pool.execute(
       `SELECT id, name, email, password_hash, role,
-              is_active AS active,
-              failed_login_attempts AS failed_attempts,
-              locked_until, created_at, updated_at
+              active, failed_attempts, locked_until,
+              created_at, updated_at
        FROM users
        WHERE email = ?`,
       [email],
@@ -49,9 +48,8 @@ class UserRepository {
   async findById(id) {
     const [rows] = await this.pool.execute(
       `SELECT id, name, email, password_hash, role,
-              is_active AS active,
-              failed_login_attempts AS failed_attempts,
-              locked_until, created_at, updated_at
+              active, failed_attempts, locked_until,
+              created_at, updated_at
        FROM users
        WHERE id = ?`,
       [id],
@@ -75,32 +73,26 @@ class UserRepository {
   }
 
   async recordFailedLogin(id, maxAttempts = 5, lockoutMinutes = 15) {
+    // An expired lock starts a fresh count.
     await this.pool.execute(
       `UPDATE users
-       SET failed_login_attempts = CASE
-             WHEN locked_until IS NOT NULL
-                  AND locked_until <= UTC_TIMESTAMP(3)
-               THEN 1
-             ELSE failed_login_attempts + 1
-           END,
-           locked_until = CASE
-             WHEN (
-               CASE
-                 WHEN locked_until IS NOT NULL
-                      AND locked_until <= UTC_TIMESTAMP(3)
-                   THEN 1
-                 ELSE failed_login_attempts + 1
-               END
-             ) >= ?
-               THEN DATE_ADD(
-                 UTC_TIMESTAMP(3),
-                 INTERVAL ? MINUTE
-               )
-             WHEN locked_until IS NOT NULL
-                  AND locked_until <= UTC_TIMESTAMP(3)
-               THEN NULL
+       SET failed_attempts = 0,
+           locked_until = NULL
+       WHERE id = ?
+         AND locked_until IS NOT NULL
+         AND locked_until <= UTC_TIMESTAMP(3)`,
+      [id],
+    );
+
+    // Decide the lock using the previous attempt count before incrementing.
+    await this.pool.execute(
+      `UPDATE users
+       SET locked_until = CASE
+             WHEN failed_attempts + 1 >= ?
+               THEN DATE_ADD(UTC_TIMESTAMP(3), INTERVAL ? MINUTE)
              ELSE locked_until
-           END
+           END,
+           failed_attempts = failed_attempts + 1
        WHERE id = ?`,
       [maxAttempts, lockoutMinutes, id],
     );
@@ -109,7 +101,7 @@ class UserRepository {
   async resetFailedLogins(id) {
     await this.pool.execute(
       `UPDATE users
-       SET failed_login_attempts = 0,
+       SET failed_attempts = 0,
            locked_until = NULL
        WHERE id = ?`,
       [id],
@@ -119,8 +111,7 @@ class UserRepository {
   async listAll({ limit, offset }) {
     const [rows] = await this.pool.execute(
       `SELECT id, name, email, role,
-              is_active AS active,
-              locked_until, created_at
+              active, locked_until, created_at
        FROM users
        ORDER BY id ASC
        LIMIT ? OFFSET ?`,
@@ -154,7 +145,7 @@ class UserRepository {
 
   async setActive(id, active) {
     await this.pool.execute(
-      "UPDATE users SET is_active = ? WHERE id = ?",
+      "UPDATE users SET active = ? WHERE id = ?",
       [active ? 1 : 0, id],
     );
   }
@@ -185,7 +176,7 @@ function toPublicUser(user) {
   };
 }
 
-// Admin views add account state but still never expose the hash.
+// Admin views add account state but never expose the password hash.
 function toAdminUser(user) {
   return {
     id: user.id,
