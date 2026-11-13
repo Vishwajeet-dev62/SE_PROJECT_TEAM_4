@@ -9,7 +9,8 @@
     "start": "node --env-file-if-exists=.env server.js",
     "dev": "node --env-file-if-exists=.env --watch server.js",
     "migrate": "node --env-file-if-exists=.env scripts/migrate.js",
-    "test:mysql": "node --env-file-if-exists=.env scripts/mysql-integration.js"
+    "test:mysql": "node --env-file-if-exists=.env scripts/mysql-integration.js",
+    "test:mysql:member3": "node --env-file-if-exists=.env scripts/mysql-integration-member3.js"
   },
   "author": "",
   "license": "ISC",
