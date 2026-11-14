@@ -1,3 +1,4 @@
+
 "use strict";
 
 const { ApiError } = require("../errors/apiError");
@@ -19,6 +20,7 @@ class TaskService {
     categoryRepository,
     tagRepository,
     activityService,
+    notificationService,
   }) {
     this.taskRepository = taskRepository;
     this.projectService = projectService;
@@ -26,6 +28,7 @@ class TaskService {
     this.categoryRepository = categoryRepository;
     this.tagRepository = tagRepository;
     this.activityService = activityService;
+    this.notificationService = notificationService;
   }
 
   async list(projectIdInput, userInput, query = {}) {
@@ -227,6 +230,16 @@ class TaskService {
 
     const updatedTask = await this.get(task.id, user);
 
+    // Notify task participants only when the status actually changes.
+    if (task.status !== updatedTask.status) {
+      await this.notifyStatusChange(
+        task,
+        project,
+        user,
+        updatedTask,
+      );
+    }
+
     await this.recordActivity({
       projectId: project.id,
       userId: user.id,
@@ -238,6 +251,42 @@ class TaskService {
     });
 
     return updatedTask;
+  }
+
+  async notifyStatusChange(task, project, user, updatedTask) {
+    if (!this.notificationService) {
+      return;
+    }
+
+    const recipientIds = [...new Set(
+      [task.createdBy, task.assignedTo]
+        .filter(
+          (recipientId) =>
+            recipientId &&
+            String(recipientId) !== String(user.id),
+        )
+        .map(String),
+    )];
+
+    for (const recipientId of recipientIds) {
+      try {
+        await this.notificationService.create({
+          userId: recipientId,
+          type: "TASK_STATUS_CHANGED",
+          title: "Task status updated",
+          message: `The status of "${task.title}" changed from ${task.status} to ${updatedTask.status}.`,
+          data: {
+            taskId: task.id,
+            projectId: project.id,
+            oldStatus: task.status,
+            newStatus: updatedTask.status,
+            changedBy: user.id,
+          },
+        });
+      } catch {
+        // Notification failures must not affect task updates.
+      }
+    }
   }
 
   async delete(taskIdInput, userInput) {
