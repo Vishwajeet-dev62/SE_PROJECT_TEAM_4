@@ -19,6 +19,7 @@ function createDependencies() {
 
   const tasks = new Map();
   const activityEvents = [];
+  const notifications = [];
   let nextId = 42;
 
   const projectService = {
@@ -251,6 +252,12 @@ function createDependencies() {
     },
   };
 
+  const notificationService = {
+  async create(notification) {
+    notifications.push(notification);
+  },
+};
+
   const service = new TaskService({
     taskRepository,
     projectService,
@@ -258,6 +265,7 @@ function createDependencies() {
     categoryRepository,
     tagRepository,
     activityService,
+    notificationService,
   });
 
   return {
@@ -265,6 +273,8 @@ function createDependencies() {
     tasks,
     project,
     activityEvents,
+    notifications,
+    notificationService,
   };
 }
 
@@ -382,6 +392,69 @@ test("assigned project members can update tasks", async () => {
 
   assert.equal(updated.status, "IN_PROGRESS");
   assert.equal(updated.permissions.canEdit, true);
+});
+
+test("status change notifies the assigned user but excludes the actor", async () => {
+  const { service, notifications } = createDependencies();
+
+  const task = await service.create(
+    "7",
+    { title: "Prepare report", assigned_to: "20" },
+    owner,
+  );
+
+  await service.update(
+    task.id,
+    { status: "IN_PROGRESS" },
+    owner,
+  );
+
+  assert.equal(notifications.length, 1);
+  assert.equal(notifications[0].userId, member.id);
+  assert.equal(notifications[0].type, "TASK_STATUS_CHANGED");
+  assert.equal(notifications[0].data.oldStatus, "TODO");
+  assert.equal(notifications[0].data.newStatus, "IN_PROGRESS");
+  assert.equal(notifications[0].data.taskId, task.id);
+});
+
+test("unchanged task status does not create a notification", async () => {
+  const { service, notifications } = createDependencies();
+
+  const task = await service.create(
+    "7",
+    { title: "Prepare report", assigned_to: "20" },
+    owner,
+  );
+
+  await service.update(
+    task.id,
+    { status: "TODO" },
+    owner,
+  );
+
+  assert.equal(notifications.length, 0);
+});
+
+test("notification failure does not fail a task status update", async () => {
+  const { service, notificationService } = createDependencies();
+
+  const task = await service.create(
+    "7",
+    { title: "Prepare report", assigned_to: "20" },
+    owner,
+  );
+
+  notificationService.create = async () => {
+    throw new Error("Notification database unavailable");
+  };
+
+  const updatedTask = await service.update(
+    task.id,
+    { status: "IN_PROGRESS" },
+    owner,
+  );
+
+  assert.equal(updatedTask.status, "IN_PROGRESS");
 });
 
 test("project members who are neither creator nor assignee cannot update tasks", async () => {

@@ -90,6 +90,7 @@ function createServices(pool, authConfig = {}) {
     categoryRepository,
     tagRepository,
     activityService,
+    notificationService,
   });
 
   const categoryService = new CategoryService({
