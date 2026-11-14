@@ -93,6 +93,17 @@ function createRequireAuth({
         );
       }
 
+      // A password change ends every session that was issued before it.
+      if (
+        user.passwordChangedEpoch != null &&
+        !(Number.isSafeInteger(payload.iat) &&
+          payload.iat >= user.passwordChangedEpoch)
+      ) {
+        return next(
+          new ApiError(401, "SESSION_REVOKED", "Authentication session has ended"),
+        );
+      }
+
       req.user = {
         id: parseId(user.id, "user id"),
         role: user.role,

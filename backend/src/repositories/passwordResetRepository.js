@@ -44,7 +44,9 @@ class PasswordResetRepository {
       );
       await connection.execute(
         `UPDATE users
-         SET password_hash = ?, failed_attempts = 0, locked_until = NULL
+         SET password_hash = ?,
+             password_changed_at = UTC_TIMESTAMP(3),
+             failed_attempts = 0, locked_until = NULL
          WHERE id = ?`,
         [passwordHash, rows[0].user_id],
       );
