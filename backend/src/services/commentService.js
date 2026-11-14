@@ -3,9 +3,10 @@ const { requireUser, parseId } = require("../utils/ids");
 const { collectionResponse, parsePagination } = require("../utils/pagination");
 
 class CommentService {
-  constructor({ commentRepository, projectService }) {
+  constructor({ commentRepository, projectService, notificationService }) {
     this.commentRepository = commentRepository;
     this.projectService = projectService;
+    this.notificationService = notificationService;
   }
 
   async list(taskIdInput, userInput, query) {
@@ -25,28 +26,66 @@ class CommentService {
 
   async create(taskIdInput, body, userInput) {
     const user = requireUser(userInput);
-    const { task } = await this.projectService.authorizeTask(
+    const { task, project } = await this.projectService.authorizeTask(
       taskIdInput,
       user,
       { write: true },
     );
+
     const commentId = await this.commentRepository.create({
       taskId: task.id,
       authorId: user.id,
       body,
     });
+
     if (!commentId) {
       await this.projectService.authorizeTask(task.id, user, { write: true });
       throw notFound();
     }
+
     const comment = await this.commentRepository.findById(commentId);
+
     if (!comment) {
       throw notFound();
     }
+
+    await this.notifyCommentParticipants(task, project, user, comment);
+
     return withPermissions(comment, user, {
       ownerId: comment.ownerId,
       archived: comment.archived,
     });
+  }
+
+  async notifyCommentParticipants(task, project, user, comment) {
+    if (!this.notificationService) {
+      return;
+    }
+
+    const recipientIds = [...new Set(
+      [task.createdBy, task.assignedTo]
+        .filter((recipientId) => recipientId && recipientId !== user.id)
+        .map(String),
+    )];
+
+    for (const recipientId of recipientIds) {
+      try {
+        await this.notificationService.create({
+          userId: recipientId,
+          type: "COMMENT_ADDED",
+          title: "New comment on your task",
+          message: `A new comment was added to the task "${task.title}".`,
+          data: {
+            taskId: task.id,
+            projectId: project.id,
+            commentId: comment.id,
+            changedBy: user.id,
+          },
+        });
+      } catch {
+        // Notification failures must not affect comment creation.
+      }
+    }
   }
 
   async update(commentIdInput, body, userInput) {

@@ -287,7 +287,7 @@ class ProjectRepository {
 
   async findActiveTaskProject(taskId) {
     const [rows] = await this.pool.execute(
-      `SELECT t.id, t.project_id
+      `SELECT t.id, t.project_id, t.created_by, t.assigned_to, t.title
        FROM tasks t
        WHERE t.id = ? AND t.deleted_at IS NULL`,
       [taskId],
@@ -300,6 +300,10 @@ class ProjectRepository {
     return {
       id: String(rows[0].id),
       projectId: String(rows[0].project_id),
+      createdBy: String(rows[0].created_by),
+      assignedTo:
+        rows[0].assigned_to === null ? null : String(rows[0].assigned_to),
+      title: rows[0].title,
     };
   }
 }

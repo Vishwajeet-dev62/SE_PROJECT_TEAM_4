@@ -75,6 +75,7 @@ function createServices(pool, authConfig = {}) {
   const commentService = new CommentService({
     commentRepository,
     projectService,
+    notificationService,
   });
 
   // Tasks, categories and tags
