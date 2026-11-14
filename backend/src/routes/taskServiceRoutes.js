@@ -1,4 +1,3 @@
-
 "use strict";
 
 const express = require("express");
@@ -13,6 +12,10 @@ function createTaskServiceRouter({ taskService, requireAuth }) {
   router.use(requireAuth);
 
   // Project-scoped task collection.
+  router.get(
+    "/projects/:projectId/tasks/export.csv",
+    asyncHandler(controller.exportCsv),
+  );
   router.get("/projects/:projectId/tasks/trash", asyncHandler(controller.trash));
   router.get("/projects/:projectId/tasks", asyncHandler(controller.list));
   router.post("/projects/:projectId/tasks", asyncHandler(controller.create));

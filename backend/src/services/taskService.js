@@ -61,7 +61,21 @@ class TaskService {
       total,
     );
   }
+  async exportCsv(projectIdInput, userInput, query = {}) {
+    const user = requireUser(userInput);
 
+    const project = await this.projectService.getProject(
+      projectIdInput,
+      user,
+    );
+
+    const filters = this.parseFilters(query);
+
+    return this.taskRepository.listAllForProject(
+      project.id,
+      filters,
+    );
+  }
   async get(taskIdInput, userInput) {
     const user = requireUser(userInput);
 

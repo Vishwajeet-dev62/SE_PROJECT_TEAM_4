@@ -25,6 +25,38 @@ const taskService = {
     };
   },
 
+  exportCsv: async (...args) => {
+    calls.push(["exportCsv", ...args]);
+    return [
+      {
+        id: "11",
+        title: "Test task",
+        description: "Test description",
+        status: "TODO",
+        priority: "HIGH",
+        assignedTo: "7",
+        categoryId: "5",
+        dueDate: "2026-11-20",
+        tags: [{ name: "urgent" }],
+        createdAt: "2026-11-14T10:00:00.000Z",
+        updatedAt: "2026-11-14T11:00:00.000Z",
+      },
+      {
+        id: "12",
+        title: "=1+1",
+        description: "Formula test",
+        status: "TODO",
+        priority: "LOW",
+        assignedTo: "7",
+        categoryId: "5",
+        dueDate: null,
+        tags: [],
+        createdAt: "2026-11-14T10:00:00.000Z",
+        updatedAt: "2026-11-14T11:00:00.000Z",
+      },
+    ];
+  },
+
   create: async (...args) => {
     calls.push(["create", ...args]);
     return { id: "12", title: args[1].title };
@@ -102,6 +134,36 @@ test("lists tasks for a project and passes query filters to the service", async 
   assert.equal(calls[0][3].limit, "10");
 });
 
+test("exports project tasks as a CSV attachment", async () => {
+  const response = await fetch(
+    `${baseUrl}/projects/5/tasks/export.csv?status=TODO`,
+  );
+
+  assert.equal(response.status, 200);
+  assert.match(
+    response.headers.get("content-type"),
+    /text\/csv/,
+  );
+  assert.match(
+    response.headers.get("content-disposition"),
+    /attachment; filename="tasks\.csv"/,
+  );
+
+  const csv = await response.text();
+
+  assert.match(csv, /"ID","Title","Description"/);
+  assert.match(csv, /"11","Test task","Test description"/);
+  assert.match(csv, /"urgent"/);
+
+  // Formula-like values should be prefixed with an apostrophe.
+  assert.match(csv, /"12","'=1\+1","Formula test"/);
+
+  assert.equal(calls[0][0], "exportCsv");
+  assert.equal(calls[0][1], "5");
+  assert.equal(calls[0][2], user);
+  assert.equal(calls[0][3].status, "TODO");
+});
+
 test("creates a task and returns HTTP 201", async () => {
   const response = await fetch(
     `${baseUrl}/projects/5/tasks`,
@@ -172,8 +234,18 @@ test("passes the authenticated user to every task operation", async () => {
   assert.equal(calls.length, 6);
 
   for (const call of calls) {
-    assert.equal(call[call[0] === "list" || call[0] === "create" ||
-      call[0] === "listTrash" ? 2 : call[0] === "update" ? 3 : 2], user);
+    assert.equal(
+      call[
+        call[0] === "list" ||
+        call[0] === "create" ||
+        call[0] === "listTrash"
+          ? 2
+          : call[0] === "update"
+            ? 3
+            : 2
+      ],
+      user,
+    );
   }
 });
 

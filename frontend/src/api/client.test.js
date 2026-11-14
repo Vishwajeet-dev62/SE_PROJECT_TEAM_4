@@ -195,4 +195,41 @@ describe('API client', () => {
       }),
     )
   })
+
+    it('downloads project task CSV with filters and bearer token', async () => {
+    const csvBlob = new Blob(['ID,Title\n1,Example'], {
+      type: 'text/csv',
+    })
+
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      blob: async () => csvBlob,
+    })
+
+    const client = createApiClient({
+      baseUrl: 'http://localhost:3000/api/v1',
+      fetchImpl,
+      tokenProvider: () => 'session-token',
+    })
+
+    const result = await client.exportTasksCsv('1', {
+      status: 'TODO',
+      search: 'bug',
+    })
+
+    expect(result).toBe(csvBlob)
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      expect.objectContaining({
+        href: 'http://localhost:3000/api/v1/projects/1/tasks/export.csv?status=TODO&search=bug',
+      }),
+      expect.objectContaining({
+        method: 'GET',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer session-token',
+        }),
+      }),
+    )
+  })
 })

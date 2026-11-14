@@ -171,6 +171,26 @@ function createDependencies() {
         );
     },
 
+    async listAllForProject(projectId, filters = {}) {
+      return [...tasks.values()].filter((task) => {
+        if (
+          task.projectId !== String(projectId) ||
+          task.deletedAt
+        ) {
+          return false;
+        }
+
+        if (
+          filters.categoryId !== undefined &&
+          String(task.categoryId) !== String(filters.categoryId)
+        ) {
+          return false;
+        }
+
+        return true;
+      });
+    },
+
     async countForProject(projectId, filters = {}) {
       return [...tasks.values()].filter((task) => {
         if (
@@ -837,6 +857,34 @@ test("list filters tasks by category", async () => {
   assert.equal(result.data.length, 1);
   assert.equal(result.data[0].title, "Category five task");
   assert.equal(result.pagination.total, 1);
+});
+
+test("exportCsv returns all matching tasks without pagination", async () => {
+  const { service } = createDependencies();
+
+  await service.create(
+    "7",
+    {
+      title: "Category five task",
+      category_id: "5",
+    },
+    owner,
+  );
+
+  await service.create(
+    "7",
+    { title: "Uncategorized task" },
+    owner,
+  );
+
+  const result = await service.exportCsv(
+    "7",
+    owner,
+    { categoryId: "5" },
+  );
+
+  assert.equal(result.length, 1);
+  assert.equal(result[0].title, "Category five task");
 });
 
 test("list rejects an invalid category filter", async () => {
