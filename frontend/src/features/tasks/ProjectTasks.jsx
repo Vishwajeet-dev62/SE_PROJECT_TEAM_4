@@ -82,6 +82,7 @@ function ProjectTasks({ api, project, user = null }) {
 
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [exporting, setExporting] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
 
@@ -189,6 +190,45 @@ function ProjectTasks({ api, project, user = null }) {
     assigneeFilter,
     showTrash,
   ])
+
+  // Export all matching project tasks as a CSV file.
+  async function exportTasks() {
+    setExporting(true)
+    setError('')
+    setNotice('')
+
+    const query = {}
+
+    if (search.trim()) query.search = search.trim()
+    if (statusFilter) query.status = statusFilter
+    if (priorityFilter) query.priority = priorityFilter
+    if (categoryFilter) query.categoryId = categoryFilter
+    if (tagFilter) query.tagId = tagFilter
+    if (assigneeFilter) query.assignedTo = assigneeFilter
+
+    try {
+      const blob = await api.exportTasksCsv(projectId, query)
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+
+      link.href = url
+      link.download = 'tasks.csv'
+
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+
+      window.setTimeout(() => {
+        window.URL.revokeObjectURL(url)
+      }, 1000)
+
+      setNotice('Tasks exported successfully.')
+    } catch (exportError) {
+      setError(getErrorMessage(exportError))
+    } finally {
+      setExporting(false)
+    }
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -604,6 +644,17 @@ function ProjectTasks({ api, project, user = null }) {
         </div>
 
         <div className="tasks-heading-actions">
+          {!showTrash && (
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={exportTasks}
+              disabled={exporting}
+            >
+              {exporting ? 'Exporting...' : 'Export CSV'}
+            </button>
+          )}
+
           <button
             type="button"
             className="secondary-button"

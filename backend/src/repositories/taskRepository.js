@@ -200,7 +200,90 @@ class TaskRepository {
       tags: tagsByTask.get(task.id) || [],
     }));
   }
+  async listAllForProject(
+    projectId,
+    {
+      status,
+      priority,
+      assignedTo,
+      categoryId,
+      tagId,
+      search,
+      dueBefore,
+    } = {},
+  ) {
+    const conditions = [
+      "t.project_id = ?",
+      "t.deleted_at IS NULL",
+    ];
 
+    const values = [projectId];
+
+    if (status !== undefined) {
+      conditions.push("t.status = ?");
+      values.push(status);
+    }
+
+    if (priority !== undefined) {
+      conditions.push("t.priority = ?");
+      values.push(priority);
+    }
+
+    if (assignedTo !== undefined) {
+      conditions.push("t.assigned_to = ?");
+      values.push(assignedTo);
+    }
+
+    if (categoryId !== undefined) {
+      conditions.push("t.category_id = ?");
+      values.push(categoryId);
+    }
+
+    if (tagId !== undefined) {
+      conditions.push(
+        `EXISTS (
+          SELECT 1
+          FROM task_tags tt
+          WHERE tt.project_id = t.project_id
+            AND tt.task_id = t.id
+            AND tt.tag_id = ?
+        )`,
+      );
+      values.push(tagId);
+    }
+
+    if (search !== undefined && search !== "") {
+      conditions.push("t.title LIKE ?");
+      values.push(`%${escapeLike(search)}%`);
+    }
+
+    if (dueBefore !== undefined) {
+      conditions.push("t.due_date IS NOT NULL AND t.due_date <= ?");
+      values.push(dueBefore);
+    }
+
+    const [rows] = await this.pool.execute(
+      `SELECT t.id, t.project_id, t.created_by, t.assigned_to,
+              t.category_id, t.title, t.description, t.status,
+              t.priority, t.due_date, t.created_at, t.updated_at
+       FROM tasks t
+       WHERE ${conditions.join(" AND ")}
+       ORDER BY t.created_at DESC, t.id DESC`,
+      values,
+    );
+
+    const tasks = rows.map(mapTask);
+
+    const tagsByTask = await getTagsForTasks(
+      this.pool,
+      tasks.map((task) => task.id),
+    );
+
+    return tasks.map((task) => ({
+      ...task,
+      tags: tagsByTask.get(task.id) || [],
+    }));
+  }
   async countForProject(
     projectId,
     {

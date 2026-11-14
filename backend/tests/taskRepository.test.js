@@ -229,6 +229,37 @@ test("listForProject combines category filter with other filters", async () => {
   ]);
 });
 
+test("listAllForProject returns all matching tasks without pagination", async () => {
+  const pool = createPoolMock({ rows: [sampleTask] });
+  const repository = new TaskRepository(pool);
+
+  const tasks = await repository.listAllForProject("7", {
+    status: "TODO",
+    priority: "HIGH",
+    search: "report",
+  });
+
+  const call = pool.calls[0];
+
+  assert.match(call.sql, /t\.project_id = \?/);
+  assert.match(call.sql, /t\.deleted_at IS NULL/);
+  assert.match(call.sql, /t\.status = \?/);
+  assert.match(call.sql, /t\.priority = \?/);
+  assert.match(call.sql, /t\.title LIKE \?/);
+  assert.doesNotMatch(call.sql, /LIMIT|OFFSET/i);
+
+  assert.deepEqual(call.params, [
+    "7",
+    "TODO",
+    "HIGH",
+    "%report%",
+  ]);
+
+  assert.equal(tasks.length, 1);
+  assert.equal(tasks[0].title, "Prepare report");
+  assert.deepEqual(tasks[0].tags, []);
+});
+
 test("countForProject returns the filtered task count", async () => {
   const pool = createPoolMock();
   const repository = new TaskRepository(pool);

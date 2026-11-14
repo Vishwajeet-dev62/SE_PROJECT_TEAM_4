@@ -47,12 +47,19 @@ function createApi() {
     listCategories: vi.fn().mockResolvedValue({ data: [] }),
     listTags: vi.fn().mockResolvedValue({ data: [] }),
     assignTask: vi.fn().mockResolvedValue({ data: task }),
+    exportTasksCsv: vi.fn().mockResolvedValue(
+      new Blob(['ID,Title\n21,Launch task']),
+    ),
   }
 }
 
-
-async function renderTasks({ user, projectOverride = {}, taskOverride = {} }) {
+async function renderTasks({
+  user,
+  projectOverride = {},
+  taskOverride = {},
+}) {
   const api = createApi()
+
   api.listTasks.mockResolvedValue({
     data: [{ ...task, ...taskOverride }],
     pagination: {
@@ -78,9 +85,9 @@ async function renderTasks({ user, projectOverride = {}, taskOverride = {} }) {
   return { api, dropdown }
 }
 
-
 afterEach(() => {
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
 })
 
 describe('ProjectTasks assignment permissions', () => {
@@ -163,5 +170,40 @@ describe('ProjectTasks assignment permissions', () => {
     })
 
     expect(dropdown).toBeDisabled()
+  })
+})
+
+describe('ProjectTasks CSV export', () => {
+  it('exports project tasks as CSV', async () => {
+    const { api } = await renderTasks({
+      user: { id: '7', role: 'MEMBER' },
+    })
+
+    const createObjectURL = vi.fn().mockReturnValue('blob:test')
+    const revokeObjectURL = vi.fn()
+
+    vi.stubGlobal('URL', {
+      createObjectURL,
+      revokeObjectURL,
+    })
+
+    const clickSpy = vi.spyOn(
+      HTMLAnchorElement.prototype,
+      'click',
+    ).mockImplementation(() => {})
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Export CSV' }),
+    )
+
+    await waitFor(() => {
+      expect(api.exportTasksCsv).toHaveBeenCalledWith('8', {})
+      expect(
+        screen.getByText('Tasks exported successfully.'),
+      ).toBeInTheDocument()
+    })
+
+    expect(createObjectURL).toHaveBeenCalled()
+    expect(clickSpy).toHaveBeenCalled()
   })
 })

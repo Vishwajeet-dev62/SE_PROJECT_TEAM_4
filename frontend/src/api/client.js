@@ -19,7 +19,10 @@ export function createApiClient({
 } = {}) {
   const normalizedBaseUrl = baseUrl.replace(/\/+$/, '')
 
-  async function request(path, { method = 'GET', body, query } = {}) {
+  async function request(
+    path,
+    { method = 'GET', body, query, responseType = 'json' } = {},
+  ) {
     const url = new URL(`${normalizedBaseUrl}${path}`)
 
     for (const [key, value] of Object.entries(query || {})) {
@@ -61,6 +64,9 @@ export function createApiClient({
       return null
     }
 
+    if (response.ok && responseType === 'blob') {
+      return response.blob()
+    }
     let payload
 
     try {
@@ -260,6 +266,14 @@ export function createApiClient({
     listTasks: (projectId, query) => request(
       `/projects/${encodeURIComponent(projectId)}/tasks`,
       { query },
+    ),
+
+    exportTasksCsv: (projectId, query) => request(
+      `/projects/${encodeURIComponent(projectId)}/tasks/export.csv`,
+      {
+        query,
+        responseType: 'blob',
+      },
     ),
 
     createTask: (projectId, body) => request(
