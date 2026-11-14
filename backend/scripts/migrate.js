@@ -22,6 +22,7 @@ const MIGRATION_DEPENDENCIES = {
   "014_create_tags.sql": ["projects", "tasks"],
   "015_align_user_security_column_names.sql": ["users"],
   "016_add_password_changed_at.sql": ["users"],
+  "017_create_task_reminders.sql": ["tasks", "users"],
 };
 
 async function tableExists(connection, tableName) {

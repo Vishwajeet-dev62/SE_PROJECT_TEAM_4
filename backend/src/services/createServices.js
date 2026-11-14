@@ -51,6 +51,8 @@ const {
 } = require("../repositories/notificationRepository");
 
 const { NotificationService } = require("./notificationService");
+const { TaskReminderRepository } = require("../repositories/taskReminderRepository");
+const { TaskReminderService } = require("./taskReminderService");
 
 function createServices(pool, authConfig = {}) {
   // Project
@@ -69,6 +71,9 @@ function createServices(pool, authConfig = {}) {
   const notificationService = new NotificationService({
     notificationRepository,
   });
+
+  const taskReminderRepository = new TaskReminderRepository(pool);
+  const taskReminderService = new TaskReminderService({ taskReminderRepository });
 
   // Comments
   const commentRepository = new CommentRepository(pool);
@@ -170,6 +175,7 @@ function createServices(pool, authConfig = {}) {
     adminService,
     passwordResetService,
     notificationService,
+    taskReminderService,
   };
 }
 
