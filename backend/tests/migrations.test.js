@@ -33,6 +33,7 @@ test("Member 2 migrations have stable order and explicit external dependencies",
     "014_create_tags.sql",
     "015_align_user_security_column_names.sql",
     "016_add_password_changed_at.sql",
+    "017_create_task_reminders.sql",
   ]);
 
   assert.equal(MIGRATION_DEPENDENCIES["001_users.sql"], undefined);
@@ -100,6 +101,11 @@ test("Member 2 migrations have stable order and explicit external dependencies",
   assert.deepEqual(
     MIGRATION_DEPENDENCIES["014_create_tags.sql"],
     ["projects", "tasks"],
+  );
+
+  assert.deepEqual(
+    MIGRATION_DEPENDENCIES["017_create_task_reminders.sql"],
+    ["tasks", "users"],
   );
 });
 
