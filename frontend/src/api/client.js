@@ -364,6 +364,33 @@ export function createApiClient({
     ),
 
     // --------------------------------
+    // Administration (administrators only)
+    // --------------------------------
+
+    listUsers: (query) => request('/admin/users', { query }),
+
+    createUser: (body) => request('/admin/users', {
+      method: 'POST',
+      body,
+    }),
+
+    setUserStatus: (id, active) => request(
+      `/admin/users/${encodeURIComponent(id)}/status`,
+      {
+        method: 'PATCH',
+        body: { active },
+      },
+    ),
+
+    setUserRole: (id, role) => request(
+      `/admin/users/${encodeURIComponent(id)}/role`,
+      {
+        method: 'PATCH',
+        body: { role },
+      },
+    ),
+
+    // --------------------------------
     // Notifications
     // --------------------------------
 

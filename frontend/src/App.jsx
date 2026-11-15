@@ -4,6 +4,7 @@ import { createApiClient } from './api/client'
 import AuthScreen from './features/auth/AuthScreen'
 import ProjectList from './features/projects/ProjectList'
 import ProjectWorkspace from './features/projects/ProjectWorkspace'
+import AdminUsers from './features/admin/AdminUsers'
 import NotificationCenter from './features/notifications/NotificationCenter'
 import './App.css'
 
@@ -29,6 +30,7 @@ function clearStoredSession() {
 function App() {
   const [session, setSession] = useState(getStoredSession)
   const [projectId, setProjectId] = useState(null)
+  const [view, setView] = useState('projects')
   const [authError, setAuthError] = useState('')
 
   const [isRestoringSession, setIsRestoringSession] = useState(
@@ -39,6 +41,7 @@ function App() {
   const sessionRestorePromise = useRef(null)
 
   const accessToken = session?.accessToken
+  const isAdmin = session?.user?.role === 'ADMIN'
 
   const api = useMemo(() => createApiClient({
     tokenProvider: () => accessToken || null,
@@ -47,6 +50,7 @@ function App() {
       clearStoredSession()
       setSession(null)
       setProjectId(null)
+      setView('projects')
     },
   }), [accessToken])
 
@@ -108,6 +112,7 @@ function App() {
       clearStoredSession()
       setSession(null)
       setProjectId(null)
+      setView('projects')
     } catch (error) {
       if (error.status !== 401) {
         setAuthError(error.message)
@@ -140,6 +145,7 @@ function App() {
           onClick={(event) => {
             event.preventDefault()
             setProjectId(null)
+            setView('projects')
           }}
         >
           <span className="brand-mark" aria-hidden="true">
@@ -151,7 +157,20 @@ function App() {
         {session?.user && (
           <div className="account-actions">
             <NotificationCenter api={api} />
-            
+
+            {isAdmin && (
+              <button
+                className="text-button"
+                aria-pressed={view === 'admin'}
+                onClick={() => {
+                  setProjectId(null)
+                  setView(view === 'admin' ? 'projects' : 'admin')
+                }}
+              >
+                Administration
+              </button>
+            )}
+
             <span className="account-name">
               {session.user.name}
             </span>
@@ -193,7 +212,9 @@ function App() {
               </p>
             )}
 
-            {projectId ? (
+            {view === 'admin' && isAdmin ? (
+              <AdminUsers api={api} currentUser={session.user} />
+            ) : projectId ? (
               <ProjectWorkspace
                 api={api}
                 projectId={projectId}

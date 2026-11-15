@@ -232,4 +232,34 @@ describe('API client', () => {
       }),
     )
   })
+
+  it('calls the administration endpoints with the documented methods and bodies', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: {} }),
+    })
+    const client = createApiClient({
+      baseUrl: 'https://api.example.test/api/v1',
+      fetchImpl,
+      tokenProvider: async () => 'admin-token',
+    })
+
+    await client.listUsers({ page: 2, limit: 20 })
+    await client.createUser({ name: 'N', email: 'n@example.com', password: 'Passw0rdOK', role: 'MEMBER' })
+    await client.setUserStatus('7', false)
+    await client.setUserRole('7', 'ADMIN')
+
+    const calls = fetchImpl.mock.calls.map(([url, options]) => [
+      options.method,
+      url.toString(),
+      options.body,
+    ])
+    expect(calls).toEqual([
+      ['GET', 'https://api.example.test/api/v1/admin/users?page=2&limit=20', undefined],
+      ['POST', 'https://api.example.test/api/v1/admin/users', JSON.stringify({ name: 'N', email: 'n@example.com', password: 'Passw0rdOK', role: 'MEMBER' })],
+      ['PATCH', 'https://api.example.test/api/v1/admin/users/7/status', JSON.stringify({ active: false })],
+      ['PATCH', 'https://api.example.test/api/v1/admin/users/7/role', JSON.stringify({ role: 'ADMIN' })],
+    ])
+  })
 })
