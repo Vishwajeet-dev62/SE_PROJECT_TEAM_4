@@ -41,6 +41,9 @@ or fill gaps the contract leaves open. The team should confirm them.
   or status, so the system cannot be left without an administrator.
 - **Password reset links:** 30 minutes, single use, only the newest link per
   user works; only a SHA-256 hash of the token is stored.
+- **Sessions after a password reset:** every login token issued before the
+  reset stops working (`users.password_changed_at`, migration 016); the
+  tolerance is one second.
 
 ## Security audit events
 
@@ -51,10 +54,18 @@ logins record a reason code only, not the submitted email.
 
 ## Known boundaries
 
-- Password-reset email delivery is a temporary stand-in until Member 1's
-  notification service can send email.
+- Password-reset email is sent by `emailSender.js` through SMTP when `SMTP_*`
+  is configured. No test sends a real email, and the email does not go through
+  `notificationService` as the contract describes. Without `SMTP_*`,
+  development prints the link and production sends nothing.
+- `PATCH /tasks/:id` can still change `assigned_to` without the assignment
+  endpoint's notification and permission rules.
 - Task activity from Member 1 is still stored in `audit_logs`; security events
   and task history should move to separate tables.
-- No frontend exists for password reset, administration, or assignment.
-- No live MySQL verification has been run for the features listed above;
-  see [REQUIREMENTS_TRACEABILITY.md](./REQUIREMENTS_TRACEABILITY.md).
+- There is no administration screen. Password reset and assignment have
+  frontend screens.
+- Audit-log retention (one year) is not implemented.
+- Rate limits are per server instance and need `trust proxy` behind a proxy.
+- The live checks (`npm run test:mysql:member3`) run against a disposable
+  database only; see [REQUIREMENTS_TRACEABILITY.md](./REQUIREMENTS_TRACEABILITY.md)
+  for the recorded run.
