@@ -989,3 +989,54 @@ test("list rejects an invalid tag filter", async () => {
     (error) => error.code === "VALIDATION_ERROR",
   );
 });
+
+test("task update cannot change the assignee; the assignment endpoint must be used", async () => {
+  const { service } = createDependencies();
+  const created = await service.create(
+    "7",
+    { title: "Assigned task", assigned_to: member.id },
+    owner,
+  );
+
+  await assert.rejects(
+    service.update(created.id, { assigned_to: owner.id }, owner),
+    (error) => {
+      assert.equal(error.status, 400);
+      assert.equal(error.code, "VALIDATION_ERROR");
+      assert.match(error.details.assigned_to, /assignment/);
+      return true;
+    },
+  );
+  await assert.rejects(service.update(created.id, { assigned_to: null }, owner), {
+    code: "VALIDATION_ERROR",
+  });
+
+  const unchanged = await service.get(created.id, owner);
+  assert.equal(String(unchanged.assignedTo), member.id);
+});
+
+test("task update tolerates the unchanged assignee alongside other changes", async () => {
+  const { service, activityEvents } = createDependencies();
+  const created = await service.create(
+    "7",
+    { title: "Assigned task", assigned_to: member.id },
+    owner,
+  );
+
+  const updated = await service.update(
+    created.id,
+    { title: "Renamed", assigned_to: member.id },
+    owner,
+  );
+  assert.equal(updated.title, "Renamed");
+  assert.equal(String(updated.assignedTo), member.id);
+
+  const before = activityEvents.length;
+  const same = await service.update(created.id, { assigned_to: member.id }, owner);
+  assert.equal(String(same.assignedTo), member.id);
+  assert.equal(activityEvents.length, before, "a no-op must not record activity");
+
+  const unassigned = await service.create("7", { title: "Open task" }, owner);
+  const noChange = await service.update(unassigned.id, { assigned_to: null }, owner);
+  assert.equal(noChange.assignedTo ?? null, null);
+});

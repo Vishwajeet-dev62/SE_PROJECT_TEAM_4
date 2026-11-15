@@ -10,12 +10,12 @@ class UserRepository {
     this.pool = pool;
   }
 
-  async create({ name, email, passwordHash }) {
+  async create({ name, email, passwordHash, role = "MEMBER" }) {
     try {
       const [result] = await this.pool.execute(
-        `INSERT INTO users (name, email, password_hash)
-         VALUES (?, ?, ?)`,
-        [name, email, passwordHash],
+        `INSERT INTO users (name, email, password_hash, role)
+         VALUES (?, ?, ?, ?)`,
+        [name, email, passwordHash, role],
       );
 
       return this.findById(String(result.insertId));

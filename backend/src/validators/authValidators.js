@@ -96,6 +96,7 @@ function invalid(message, field, detail) {
 
 module.exports = {
   validateEmail,
+  validateName,
   validateLogin,
   validateNewPassword,
   validateRegister,

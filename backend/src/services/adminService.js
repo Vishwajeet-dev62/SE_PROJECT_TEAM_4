@@ -1,16 +1,41 @@
+const bcrypt = require("bcryptjs");
 const { ApiError } = require("../errors/apiError");
 const { toAdminUser } = require("../repositories/userRepository");
+const { AUDIT_EVENTS } = require("./auditLog");
 const { collectionResponse, parsePagination } = require("../utils/pagination");
 const { parseId, requireUser } = require("../utils/ids");
 const {
+  validateCreateUser,
   validateRoleUpdate,
   validateStatusUpdate,
 } = require("../validators/adminValidators");
 
 class AdminService {
-  constructor({ userRepository, auditLog }) {
+  constructor({ userRepository, auditLog, bcryptCost = 12 }) {
     this.userRepository = userRepository;
     this.auditLog = auditLog;
+    this.bcryptCost = bcryptCost;
+  }
+
+  // SRS TM-F-041: administrators can create accounts. The administrator sets
+  // the first password, which the person should change after signing in.
+  async createUser(actorInput, body, context = {}) {
+    const actor = requireUser(actorInput);
+    const { name, email, password, role } = validateCreateUser(body);
+    const passwordHash = await bcrypt.hash(password, this.bcryptCost);
+    const created = await this.userRepository.create({
+      name,
+      email,
+      passwordHash,
+      role,
+    });
+    await this.auditLog({
+      eventType: AUDIT_EVENTS.USER_CREATED_BY_ADMIN,
+      userId: actor.id,
+      ip: context.ip,
+      details: { targetUserId: created.id, role },
+    });
+    return toAdminUser(created);
   }
 
   async listUsers(query) {
