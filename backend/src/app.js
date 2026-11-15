@@ -53,8 +53,13 @@ function createApp({
   passwordResetService,
   authRateLimit = {},
   notificationService,
+  trustProxy = 0,
 } = {}) {
   const app = express();
+
+  if (trustProxy) {
+    app.set("trust proxy", trustProxy);
+  }
 
   // Security and common middleware
   app.disable("x-powered-by");

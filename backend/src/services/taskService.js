@@ -186,7 +186,20 @@ class TaskService {
     }
 
     if (Object.hasOwn(input, "assigned_to")) {
-      await this.validateAssignee(input.assigned_to, project);
+      // The assignee is changed only through PATCH /tasks/:id/assignment,
+      // which validates it, notifies the people involved and records the
+      // change. Repeating the current assignee is harmless and ignored.
+      const requested = input.assigned_to === null ? null : String(input.assigned_to);
+      const current = task.assignedTo == null ? null : String(task.assignedTo);
+      if (requested !== current) {
+        throw validationError("Task input is invalid", [
+          {
+            field: "assigned_to",
+            message: "Change the assignee with PATCH /api/v1/tasks/:id/assignment",
+          },
+        ]);
+      }
+      delete input.assigned_to;
     }
 
     if (Object.hasOwn(input, "category_id")) {
@@ -195,6 +208,10 @@ class TaskService {
 
     if (Object.hasOwn(input, "tagIds")) {
       await this.validateTags(input.tagIds, project);
+    }
+
+    if (Object.keys(input).length === 0) {
+      return this.get(task.id, user); // only the unchanged assignee was sent
     }
 
     // Map API request fields to repository fields.

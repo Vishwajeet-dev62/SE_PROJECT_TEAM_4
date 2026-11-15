@@ -1,4 +1,9 @@
 const { ApiError } = require("../errors/apiError");
+const {
+  validateEmail,
+  validateName,
+  validateNewPassword,
+} = require("./authValidators");
 
 const ROLES = ["ADMIN", "MEMBER"];
 
@@ -35,4 +40,20 @@ function requireObject(body, allowedFields) {
   return body;
 }
 
-module.exports = { validateRoleUpdate, validateStatusUpdate };
+function validateCreateUser(body) {
+  const input = requireObject(body, ["name", "email", "password", "role"]);
+  const role = input.role === undefined ? "MEMBER" : input.role;
+  if (!ROLES.includes(role)) {
+    throw new ApiError(400, "VALIDATION_ERROR", "role is not valid", {
+      role: `Must be one of ${ROLES.join(", ")}`,
+    });
+  }
+  return {
+    name: validateName(input.name),
+    email: validateEmail(input.email),
+    password: validateNewPassword(input.password),
+    role,
+  };
+}
+
+module.exports = { validateCreateUser, validateRoleUpdate, validateStatusUpdate };

@@ -5,6 +5,9 @@ const { createPool } = require("./src/config/database");
 const { getConfig } = require("./src/config/env");
 const { createServices } = require("./src/services/createServices");
 const {
+  startAuditRetentionScheduler,
+} = require("./src/services/auditRetentionScheduler");
+const {
   startTaskReminderScheduler,
 } = require("./src/services/taskReminderScheduler");
 
@@ -21,9 +24,17 @@ function start() {
     email: config.email,
   });
 
-  const app = createApp({ ...services, corsOrigins: config.corsOrigins });
+  const app = createApp({
+    ...services,
+    corsOrigins: config.corsOrigins,
+    trustProxy: config.trustProxy,
+  });
   const stopReminderScheduler = startTaskReminderScheduler({
     taskReminderService: services.taskReminderService,
+  });
+
+  const stopAuditRetentionScheduler = startAuditRetentionScheduler({
+    auditRetentionService: services.auditRetentionService,
   });
 
   const server = app.listen(config.port, () => {
@@ -40,6 +51,7 @@ function start() {
 
       shuttingDown = true;
       stopReminderScheduler();
+      stopAuditRetentionScheduler();
 
       server.close(async (error) => {
         if (error) {
@@ -52,7 +64,7 @@ function start() {
     });
   }
 
-  return { server, pool, stopReminderScheduler };
+  return { server, pool, stopReminderScheduler, stopAuditRetentionScheduler };
 }
 
 if (require.main === module) {

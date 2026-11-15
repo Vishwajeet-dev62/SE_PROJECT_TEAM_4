@@ -68,6 +68,10 @@ function getConfig(env = process.env) {
     };
   }
 
+  // Number of reverse proxies in front of the server (0 = none). Needed so
+  // per-IP rate limits see the client address and not the proxy's.
+  const trustProxy = readInteger("TRUST_PROXY", env.TRUST_PROXY, 0, 0, 10);
+
   return {
     nodeEnv: env.NODE_ENV || "development",
     port: readInteger("PORT", env.PORT, DEFAULT_PORT, 1, 65535),
@@ -88,6 +92,7 @@ function getConfig(env = process.env) {
     jwtSecret: env.JWT_SECRET,
     jwtExpiresIn: env.JWT_EXPIRES_IN || "30m",
     corsOrigins: origins,
+    trustProxy,
     email: { smtp },
   };
 }

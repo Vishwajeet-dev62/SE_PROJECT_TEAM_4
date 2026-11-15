@@ -11,6 +11,7 @@ function createAdminRouter({ adminService, requireAuth }) {
   router.use(requireAuth, requireRole("ADMIN"));
 
   router.get("/users", asyncHandler(controller.listUsers));
+  router.post("/users", asyncHandler(controller.createUser));
   router.patch("/users/:id/status", asyncHandler(controller.setStatus));
   router.patch("/users/:id/role", asyncHandler(controller.setRole));
 

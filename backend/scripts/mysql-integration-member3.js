@@ -28,6 +28,10 @@ function makeFixture(runId) {
     emails: Object.fromEntries(
       ROLES.map((role) => [role, `m3-live-${runId}-${role}@example.invalid`]),
     ),
+    createdEmails: [
+      `m3-live-${runId}-created@example.invalid`,
+      `m3-live-${runId}-created-admin@example.invalid`,
+    ],
     projectName: `M3 live project ${runId}`,
     password: `M3live${crypto.randomBytes(9).toString("hex")}7a`,
     newPassword: `M3next${crypto.randomBytes(9).toString("hex")}9b`,
@@ -357,6 +361,113 @@ async function runChecks(pool, config, fixture) {
     expectStatus(await assign(tokens.alice, Number(users.bob.id)), 409, "archived project rejects assignment");
     done("assignment: permissions, membership, notifications, history, archived project");
 
+    // 5b. The task update route cannot bypass the assignment rules ---------
+    const guardTask = expectStatus(
+      await api(`/projects/${(await api("/projects", { method: "POST", token: tokens.alice, body: { name: `${fixture.projectName} guard`, description: "guard" } })).body.data.id}/tasks`, {
+        method: "POST", token: tokens.alice, body: { title: `M3 guard task ${fixture.runId}` },
+      }),
+      201,
+      "create guard task",
+    ).data;
+    const guardProjectId = guardTask.projectId ?? guardTask.project_id;
+    await api(`/projects/${guardProjectId}/members`, {
+      method: "POST", token: tokens.alice, body: { userId: users.bob.id },
+    });
+    expectStatus(
+      await api(`/tasks/${guardTask.id}/assignment`, { method: "PATCH", token: tokens.alice, body: { assigned_to: Number(users.bob.id) } }),
+      200,
+      "assign through the endpoint",
+    );
+    const bypass = expectStatus(
+      await api(`/tasks/${guardTask.id}`, { method: "PATCH", token: tokens.alice, body: { assigned_to: Number(users.alice.id) } }),
+      400,
+      "assigned_to through PATCH /tasks/:id",
+    );
+    assert.equal(bypass.error.code, "VALIDATION_ERROR");
+    const [guardRow] = await pool.execute("SELECT assigned_to FROM tasks WHERE id = ?", [guardTask.id]);
+    assert.equal(String(guardRow[0].assigned_to), users.bob.id, "assignee unchanged by the rejected update");
+    expectStatus(
+      await api(`/tasks/${guardTask.id}`, { method: "PATCH", token: tokens.alice, body: { title: "Renamed", assigned_to: Number(users.bob.id) } }),
+      200,
+      "unchanged assignee alongside another change",
+    );
+    done("PATCH /tasks/:id cannot change the assignee; the same assignee is tolerated");
+
+    // 5c. Administrators create accounts ---------------------------------
+    const [createdEmail, createdAdminEmail] = fixture.createdEmails;
+    const createdBody = expectStatus(
+      await api("/admin/users", { method: "POST", token: tokens.admin, body: { name: "Created", email: createdEmail.toUpperCase(), password: fixture.password } }),
+      201,
+      "admin creates a member",
+    );
+    assert.equal(createdBody.data.role, "MEMBER");
+    assert.equal(createdBody.data.email, createdEmail);
+    assert.equal(JSON.stringify(createdBody).includes("hash"), false);
+    expectStatus(
+      await api("/admin/users", { method: "POST", token: tokens.admin, body: { name: "Created", email: createdEmail, password: fixture.password } }),
+      409,
+      "duplicate account",
+    );
+    expectStatus(
+      await api("/admin/users", { method: "POST", token: tokens.alice, body: { name: "x", email: `x-${fixture.runId}@example.invalid`, password: fixture.password } }),
+      403,
+      "member cannot create accounts",
+    );
+    const createdAdmin = expectStatus(
+      await api("/admin/users", { method: "POST", token: tokens.admin, body: { name: "Created Admin", email: createdAdminEmail, password: fixture.password, role: "ADMIN" } }),
+      201,
+      "admin creates an administrator",
+    );
+    const createdLogin = expectStatus(
+      await api("/auth/login", { method: "POST", body: { email: createdEmail, password: fixture.password } }),
+      200,
+      "created user signs in",
+    );
+    expectStatus(await api("/admin/users", { token: createdLogin.data.accessToken }), 403, "created member is not an admin");
+    const createdAdminLogin = expectStatus(
+      await api("/auth/login", { method: "POST", body: { email: createdAdminEmail, password: fixture.password } }),
+      200,
+      "created administrator signs in",
+    );
+    expectStatus(await api("/admin/users", { token: createdAdminLogin.data.accessToken }), 200, "created administrator can administer");
+    const [createdHash] = await pool.execute("SELECT password_hash FROM users WHERE email = ?", [createdEmail]);
+    assert.match(createdHash[0].password_hash, /^\$2[aby]\$12\$/);
+    const createdEvents = await auditRows(users.admin.id, "USER_CREATED_BY_ADMIN");
+    assert.equal(createdEvents.length, 2);
+    assert.equal(JSON.stringify(createdEvents).includes(fixture.password), false);
+    assert.equal(createdAdmin.data.role, "ADMIN");
+    done("admin creates member and administrator accounts, duplicate and permission checks, audited");
+
+    // 5d. One-year retention of security events ------------------------------
+    const marker = `m3-retention-${fixture.runId}`;
+    const insertAudit = async (eventType, daysOld) => {
+      await pool.execute(
+        `INSERT INTO audit_logs (user_id, event_type, details, created_at)
+         VALUES (NULL, ?, ?, DATE_SUB(UTC_TIMESTAMP(3), INTERVAL ? DAY))`,
+        [eventType, JSON.stringify({ marker }), daysOld],
+      );
+    };
+    await insertAudit("LOGIN_FAILED", 400);
+    await insertAudit("ROLE_CHANGED", 366);
+    await insertAudit("LOGIN_FAILED", 300);
+    await insertAudit("TASK_CREATED", 400);
+    const removed = await services.auditRetentionService.purgeExpired();
+    assert.ok(removed >= 2, "expired security events are removed");
+    const [remaining] = await pool.execute(
+      "SELECT event_type, DATEDIFF(UTC_TIMESTAMP(3), created_at) AS days FROM audit_logs WHERE JSON_UNQUOTE(JSON_EXTRACT(details, '$.marker')) = ? ORDER BY event_type, days",
+      [marker],
+    );
+    assert.deepEqual(
+      remaining.map((row) => [row.event_type, Number(row.days) > 365]),
+      [["LOGIN_FAILED", false], ["TASK_CREATED", true]],
+      "only the recent security event and the old task activity row remain",
+    );
+    await pool.execute(
+      "DELETE FROM audit_logs WHERE JSON_UNQUOTE(JSON_EXTRACT(details, '$.marker')) = ?",
+      [marker],
+    );
+    done("retention removes security events older than a year and leaves recent and task-activity rows");
+
     // 6. Rate limiting ----------------------------------------------------
     let blockedAt = null;
     for (let attempt = 1; attempt <= 12; attempt += 1) {
@@ -395,7 +506,7 @@ async function runChecks(pool, config, fixture) {
 }
 
 async function cleanup(pool, fixture) {
-  const emails = Object.values(fixture.emails);
+  const emails = [...Object.values(fixture.emails), ...fixture.createdEmails];
   const connection = await pool.getConnection();
   try {
     await connection.query("SET FOREIGN_KEY_CHECKS = 0");
@@ -405,8 +516,8 @@ async function cleanup(pool, fixture) {
     );
     const userIds = userRows.map((row) => row.id);
     const [projectRows] = await connection.query(
-      "SELECT id FROM projects WHERE name = ?",
-      [fixture.projectName],
+      "SELECT id FROM projects WHERE name = ? OR name = ?",
+      [fixture.projectName, `${fixture.projectName} guard`],
     );
     const projectIds = projectRows.map((row) => row.id);
     const marks = (values) => values.map(() => "?").join(",");
