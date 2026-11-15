@@ -24,6 +24,7 @@ function AuthScreen({ api, onAuthenticated }) {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [resetToken, setResetToken] = useState(initialState.token)
   const [error, setError] = useState('')
+  const [errorCode, setErrorCode] = useState('')
   const [success, setSuccess] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
@@ -34,6 +35,7 @@ function AuthScreen({ api, onAuthenticated }) {
   async function submit(event) {
     event.preventDefault()
     setError('')
+    setErrorCode('')
     setSuccess('')
     setSubmitting(true)
 
@@ -79,6 +81,7 @@ function AuthScreen({ api, onAuthenticated }) {
       onAuthenticated(response.data)
     } catch (requestError) {
       setError(requestError.message)
+      setErrorCode(requestError.code || '')
     } finally {
       setSubmitting(false)
     }
@@ -87,6 +90,7 @@ function AuthScreen({ api, onAuthenticated }) {
   function changeMode(nextMode) {
     setMode(nextMode)
     setError('')
+    setErrorCode('')
     setSuccess('')
     setPassword('')
     setConfirmPassword('')
@@ -203,6 +207,12 @@ function AuthScreen({ api, onAuthenticated }) {
           {error && (
             <p className="error-message" role="alert">
               {error}
+            </p>
+          )}
+
+          {error && errorCode === 'INVALID_CREDENTIALS' && mode === 'login' && (
+            <p className="form-hint">
+              After 5 failed attempts your account is locked for 15 minutes.
             </p>
           )}
 

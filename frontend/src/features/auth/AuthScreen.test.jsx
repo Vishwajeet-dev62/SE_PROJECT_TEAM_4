@@ -209,4 +209,30 @@ describe('AuthScreen', () => {
 
     expect(api.resetPassword).not.toHaveBeenCalled()
   })
+
+  it('explains the lockout rule after a failed sign in, but not for other errors', async () => {
+    const credentialsError = Object.assign(new Error('Invalid email or password'), {
+      code: 'INVALID_CREDENTIALS',
+    })
+    const api = {
+      login: vi.fn()
+        .mockRejectedValueOnce(credentialsError)
+        .mockRejectedValueOnce(new Error('The API server could not be reached')),
+      register: vi.fn(),
+    }
+
+    render(<AuthScreen api={api} onAuthenticated={vi.fn()} />)
+
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'member@example.com' } })
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'WrongPass1' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+
+    expect(await screen.findByText(
+      'After 5 failed attempts your account is locked for 15 minutes.',
+    )).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+    expect(await screen.findByText('The API server could not be reached')).toBeInTheDocument()
+    expect(screen.queryByText(/locked for 15 minutes/)).not.toBeInTheDocument()
+  })
 })
